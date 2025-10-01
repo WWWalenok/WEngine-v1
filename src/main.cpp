@@ -30,8 +30,6 @@ struct test2 {
 
 DECLARE_DATA_STRUCT_AND_SERIALIZE(test, a, b, c, d)
 
-DECLARE_DATA_TEMPLATE_TYPE(srv_function, __I(typename... T), __I(T...));
-
 
 int main()
 {
@@ -52,7 +50,7 @@ int main()
             t2.push_back(b1);
             t2.push_back(t);
 
-            constexpr auto gg = pipe::Helper<test>::ID();
+            constexpr auto gg = data_core::Helper<test>::ID();
         }
     }
 }
