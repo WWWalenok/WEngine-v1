@@ -831,16 +831,18 @@ if(Read<size_t>(offset, serealized) != data_core::Helper<T>::ID()) throw std::in
 // WARNING use this in global scope (without namespace)
 #define DECLARE_DATA_TYPE_AND_DEFAULT_SERIALIZER(T) DECLARE_DATA_TYPE(T); DECLARE_DATA_SERIALIZER_DESERIALIZER_DEFAULT(T);
 
+
+#define REGISTER_CONVERSION_CONCAT_INNER(a, b) a ## b
+#define REGISTER_CONVERSION_CONCAT(a, b) REGISTER_CONVERSION_CONCAT_INNER(a, b)
+
 #define REGISTER_CONVERSION_DEFAULT(From, To) template<> struct data_core::TypeConverterHelper<From, To> {\
-    static bool _can; \
-    static bool Can() { return _can; } \
-}; bool data_core::TypeConverterHelper<From, To>::_can = data_core::TypeConverter::RegisterConverter<From, To>();
+    static bool Can() { return true; } \
+}; namespace data_core { namespace helpers { static const bool REGISTER_CONVERSION_CONCAT(REGISTER_CONVERSION_CONCAT(_REGISTER_CONVERSION_STATIC_OBJECT_, __COUNTER__), __LINE__) = data_core::TypeConverter::RegisterConverter<From, To>(); } }
 
 #define REGISTER_CONVERSION_FUNCTION(From, To, ...) template<> struct data_core::TypeConverterHelper<From, To> {\
     static bool ConvFunction(const From& from, To& to)__VA_ARGS__; \
-    static bool _can; \
-    static bool Can() { return _can; } \
-}; bool data_core::TypeConverterHelper<From, To>::_can  = data_core::TypeConverter::RegisterConverter<From, To>(&data_core::TypeConverterHelper<From, To>::ConvFunction);
+    static bool Can() { return true; } \
+}; namespace data_core { namespace helpers { static const bool REGISTER_CONVERSION_CONCAT(REGISTER_CONVERSION_CONCAT(_REGISTER_CONVERSION_STATIC_OBJECT_, __COUNTER__), __LINE__) = data_core::TypeConverter::RegisterConverter<From, To>(&data_core::TypeConverterHelper<From, To>::ConvFunction); } }
 
 
 #endif

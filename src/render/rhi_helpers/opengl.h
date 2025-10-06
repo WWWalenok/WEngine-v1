@@ -1,8 +1,12 @@
 #pragma once
 
 #include "IRHIHelper.h"
-#include "../../World/WWorld.h"
+#include "../../World/World.h"
 #include "../../UI/UI.h"
+#include "../../graphic/Mesh.h"
+#include "../../graphic/Texture.h"
+#include "../../graphic/Material.h"
+#include "../../graphic/Map.h"
 
 #include <GL/glew.h>
 #include <gl/GL.h>
@@ -66,7 +70,7 @@ struct VFShaderProgramm
     operator bool() { return shaderProgram; }
     bool operator !() { return !shaderProgram; }
     
-    void GetLoc(const char* name)
+    GLint GetLoc(const char* name)
     {
         return glGetUniformLocation(shaderProgram, name);
     }
@@ -539,13 +543,10 @@ public:
     
     GLuint Tex = 0;
     PixelFormat mt;
-    virtual void Update(std::string path)
+    
+    virtual void Update(Ref<Texture> ref_tex)
     {
-        throw std::runtime_error("TODO");
-    }
-
-    virtual void Update(void* data, PixelFormat type, size_t w, size_t h)
-    {
+        ref_tex->
         mt = type;
         if (!Tex)
             glGenTextures(1, &Tex);

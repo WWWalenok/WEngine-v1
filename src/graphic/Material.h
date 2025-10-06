@@ -1,7 +1,7 @@
 #pragma once
-#include "../core/data.h"
+#include "../core/core.h"
 
-#include "../core/wmath.h"
+
 #include "Map.h"
 #include "../render/rhi_helpers/IRHIHelper.h"
 #include <string>

@@ -4,21 +4,40 @@
 #include <math.h>
 #include <vector>
 
+/*!
+ * @brief Fixed-size mathematical vector template for 2D, 3D, and 4D operations
+ * @tparam T The element type (typically float, double, or int)
+ * @tparam S The vector dimension size (2, 3, or 4)
+ * 
+ * @note Provides common vector operations including arithmetic, dot product, 
+ *       magnitude calculation, and string conversion. Optimized for graphics
+ *       and mathematical computations with fixed-size vectors.
+ */
 template<typename T, uint16_t S>
 struct MVector
 {
-    T _data[S];
+    T _data[S];  ///< Internal array storing vector components
 
+    /*! @brief Default constructor initializes all elements to zero */
     MVector<T, S>()
     {
         for (int i = 0; i < S; i++) _data[i] = 0;
     }
 
+    /*! 
+     * @brief Constructor from raw array
+     * @param data Pointer to array of exactly S elements
+     */
     MVector<T, S>(const T* data)
     {
         for (int i = 0; i < S; i++) _data[i] = data[i];
     }
 
+    /*!
+     * @brief Variadic constructor for explicit element initialization
+     * @tparam ARGS Parameter pack must contain exactly S elements of type T
+     * @param args Exactly S values to initialize vector elements
+     */
     template<typename... ARGS, typename Check = std::enable_if_t<sizeof...(ARGS) == S && std::conjunction_v<std::is_same<T, ARGS>...>>>
     MVector<T, S>(ARGS... args)
     {
@@ -26,6 +45,11 @@ struct MVector
         for (int i = 0; i < S; i++) _data[i] = data[i];
     }
 
+    /*!
+     * @brief Constructor from initializer list
+     * @param data Initializer list with up to S elements
+     * @note If list contains fewer than S elements, remaining elements are zero-initialized
+     */
     MVector<T, S>(std::initializer_list<T> data)
     {
         int i = 0;
@@ -39,6 +63,7 @@ struct MVector
         for (; i < S; i++) _data[i] = 0;
     }
 
+    /*! @brief Unary negation operator */
     MVector<T, S> operator-() const
     {
         T data[S];
@@ -46,6 +71,7 @@ struct MVector
         return MVector<T, S>(data);
     }
 
+    /*! @brief Unary plus operator (returns copy) */
     MVector<T, S> operator+() const
     {
         T data[S];
@@ -53,6 +79,7 @@ struct MVector
         return MVector<T, S>(data);
     }
 
+    /*! @brief Vector addition */
     MVector<T, S> operator+(const MVector<T, S>& other) const
     {
         T data[S];
@@ -60,6 +87,7 @@ struct MVector
         return MVector<T, S>(data);
     }
 
+    /*! @brief Vector subtraction */
     MVector<T, S> operator-(const MVector<T, S>& other) const
     {
         T data[S];
@@ -67,6 +95,10 @@ struct MVector
         return MVector<T, S>(data);
     }
 
+    /*! 
+     * @brief Scalar multiplication
+     * @param other Scalar value to multiply each component by
+     */
     MVector<T, S> operator*(const T& other) const
     {
         T data[S];
@@ -74,6 +106,12 @@ struct MVector
         return MVector<T, S>(data);
     }
 
+    /*!
+     * @brief Dot product operation
+     * @param other Vector to compute dot product with
+     * @return Scalar result of dot product
+     * @note Implements component-wise multiplication and summation
+     */
     T operator*(const MVector<T, S>& other) const
     {
         T data;
@@ -81,6 +119,10 @@ struct MVector
         return data;
     }
 
+    /*!
+     * @brief Scalar division
+     * @param other Scalar value to divide each component by
+     */
     MVector<T, S> operator/(const T& other) const
     {
         T data[S];
@@ -88,6 +130,11 @@ struct MVector
         return MVector<T, S>(data);
     }
 
+    /*!
+     * @brief Magnitude (length) calculation
+     * @return Euclidean norm of the vector
+     * @note Uses appropriate sqrt function for float/double, falls back to standard sqrt for other types
+     */
     T operator!() const
     {
         T ret = _data[0] * _data[0];
@@ -100,10 +147,24 @@ struct MVector
             return (T)(sqrt(ret));
     }
 
+    /*!
+     * @brief Element access with bounds checking
+     * @param i Index of element to access (0-based)
+     * @return Reference to element at index i % S
+     */
     T& operator[](int i) { return _data[i % S]; }
 
+    /*!
+     * @brief Element access with bounds checking
+     * @param i Index of element to access (0-based)
+     * @return Reference to element at index i % S
+     */
     const T& operator[](int i) const { return _data[i % S]; }
-
+    
+    /*!
+     * @brief String representation of vector
+     * @return String in format "(x, y, z, ...)" with comma-separated values
+     */
     operator std::string() const
     {
         std::string ret = "(";
@@ -123,7 +184,14 @@ typedef  MVector<float, 3> MVector3f;
 typedef  MVector<float, 4> MVector4f;
 typedef  MVector<int, 4> MVector4i;
 
-MVector3f operator/(const MVector3f& a, const MVector3f& b)
+/*!
+ * @brief Cross product operation for 3D vectors
+ * @param a First vector
+ * @param b Second vector
+ * @return Cross product result (a × b)
+ * @note Specifically defined for MVector3f, implements standard cross product formula
+ */
+static MVector3f operator/(const MVector3f& a, const MVector3f& b)
 {
     return MVector3f({a[1] * b[2] - a[2] * b[1], a[2] * b[0] - a[0] * b[2], a[0] * b[1] - a[1] * b[0]});
 }

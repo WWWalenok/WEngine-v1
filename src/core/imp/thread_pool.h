@@ -2,6 +2,7 @@
 
 #include "lockfreelist.h"
 #include "function.hpp"
+#include <chrono>
 
 class ThredaPool
 {
@@ -279,7 +280,14 @@ public:
                 if(mess->repetable())
                 {
                     const auto del = mess->delay();
-                    const size_t ts = Rational::rescale(std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count(), {1, int(1e9)}, del);
+                    auto now = std::chrono::high_resolution_clock::now();
+                    const size_t ts = Rational::rescale(
+                        std::chrono::duration_cast<std::chrono::nanoseconds>(
+                            now.time_since_epoch()
+                        ).count(), 
+                        {1, int(1e9)}, 
+                        del
+                    );
                     const size_t tts = mess->ts() + 1;
                     if(mess->delay().den && (tts > ts))
                         continue;

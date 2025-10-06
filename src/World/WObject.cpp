@@ -2,7 +2,7 @@
 #include "World.h"
 #include <stdexcept>
 
-WObject::WObject(std::string name) : name(std::move(name)) {
+WObject::WObject(const std::string& name) : name(name) {
     local_transform = MMatrix4f::identity();
 }
 
@@ -66,8 +66,22 @@ void WObject::AttachTo(WObject* new_owner) {
     world = owner->world;
 }
 
+void WObject::SetParent(WObject* new_parent) {
+    if (parent) {
+        throw std::logic_error("Object is already attached");
+    }
+    
+    parent = new_parent;
+    world = new_parent->world;
+}
+
 void WObject::Detach() {
+    if(owner)
+        owner->RemoveComponent(this);
     owner = nullptr;
+    if(parent)
+        parent->RemoveChild(this);
+    parent = nullptr;
 }
 
 bool WObject::IsAttachedToOwner(WObject* potential_owner) const {
@@ -127,8 +141,8 @@ void WObject::SetScale(MVector3f scale) {
     wm::SetScale(local_transform, scale);
 }
 
-void WObject::AddTag(std::string tag) {
-    tags.insert(tag);
+void WObject::AddTag(std::string tag, Data value) {
+    tags.insert({tag, value});
     if (world) world->RegisterTags(Ref<WObject>(this));
 }
 
@@ -141,12 +155,26 @@ bool WObject::HasTag(std::string tag) const {
     return tags.find(tag) != tags.end();
 }
 
-void WObject::Update(float delta_time) {
-    for (auto& comp : components) {
-        comp->Update(delta_time);
-    }
-    
-    for (auto& child : children) {
-        child->Update(delta_time);
-    }
+Data WObject::GetTagValue(std::string tag) const {
+    auto v = tags.find(tag);
+    return (v != tags.end()) ? v->second : Data();
 }
+
+// WComponent
+
+WComponent::WComponent(WObject* owner, const std::string& name)
+    : WObject(std::move(name)) 
+{
+    if (!owner) {
+        throw std::invalid_argument("Component must have an owner");
+    }
+    InitializeAsComponent(owner);
+}
+
+void WComponent::InitializeAsComponent(WObject* owner) {
+    owner->AddComponent(this);
+}
+
+// WActor
+
+WActor::WActor(const std::string& name) : WObject(name) {}

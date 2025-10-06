@@ -6,8 +6,10 @@
 
 struct IRHIBridge : public IWindow::EventHandler
 {
-    virtual int Render(ThredaPool*, WWorld*, UI*) = 0;
-    virtual int Render(ThredaPool*, std::unordered_map<IWindow*, WWorld*>, std::unordered_map<IWindow*, UI*>) = 0;
+    virtual int Prepare() = 0;
+    virtual int Render(WWorld*, UI*) = 0;
+    virtual int Render(std::unordered_map<IWindow*, WWorld*>, std::unordered_map<IWindow*, UI*>) = 0;
+    virtual int Finish() = 0;
 };
 
-static IRHIBridge* GetIRHIBridge();
+IRHIBridge* GetIRHIBridge();

@@ -33,9 +33,16 @@ include(cmake/TryDownload.cmake)
 set(version_file version.h)
 include(cmake/IncVersion.cmake)
 
+FILE(GLOB_RECURSE  CSource src/*.c)
+FILE(GLOB_RECURSE  CPPSource src/*.cpp)
+
+message("CPPSource ${CPPSource}")
+
 add_executable(test 
     glew/src/glew.c
     src/main.cpp
+    ${CSource}
+    ${CPPSource}
 )
 
 include_directories(

@@ -2,14 +2,16 @@
 
 
 class IRHIHelper;
-static IRHIHelper* GetIRHIHelper();
+IRHIHelper* GetIRHIHelper();
 
-struct WWorld;
+struct World;
 struct UI;
 struct Skeleton;
 struct Mesh;
 struct SkeletalMesh;
 struct ProceduralTexture;
+struct Texture;
+struct RenderTarget;
 
 enum PixelFormat : uint8_t
 {

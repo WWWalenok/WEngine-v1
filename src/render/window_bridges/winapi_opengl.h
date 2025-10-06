@@ -27,15 +27,19 @@ struct WinapiOpenglBridge : public IRHIBridge
         return ret;
     }
 
-    virtual int Render(ThredaPool* thread, WWorld* world, UI* ui) 
+    virtual int Prepare()
     {
         auto rhi = dynamic_cast<OpenglRHIHelper*>(GetIRHIHelper());
         auto wh  = dynamic_cast<WINAPIWindowHelper*>(GetIWindowsHelper());
+        if(!rhi || !wh)
+            sthrow std::runtime_error("RHI or Window manager incorrect.")
         int  ret = wh->ProcessBegin();
         if(ret != 0)
             return ret;
-        
-        thread->Process();
+    }
+
+    virtual int Render(WWorld* world, UI* ui) 
+    {
 
         for(auto& window: WINAPIWindowHelper::winvec())
         {
@@ -45,21 +49,10 @@ struct WinapiOpenglBridge : public IRHIBridge
                 Render(&window, world, ui);
             }
         }
-
-        wh->ProcessEnd();
-
     }
 
-    virtual int Render(ThredaPool* thread, std::unordered_map<IWindow*, WWorld*> _world, std::unordered_map<IWindow*, UI*> _ui) 
+    virtual int Render(std::unordered_map<IWindow*, WWorld*> _world, std::unordered_map<IWindow*, UI*> _ui) 
     {
-        auto rhi = dynamic_cast<OpenglRHIHelper*>(GetIRHIHelper());
-        auto wh  = dynamic_cast<WINAPIWindowHelper*>(GetIWindowsHelper());
-        int  ret = wh->ProcessBegin();
-        if(ret != 0)
-            return ret;
-        
-        thread->Process();
-
         WWorld* world;
         UI* ui;
 
@@ -73,7 +66,10 @@ struct WinapiOpenglBridge : public IRHIBridge
                 Render(&window, world, ui);
             }
         }
-
+    }
+    
+    virtual int Finish()
+    {
         wh->ProcessEnd();
     }
 

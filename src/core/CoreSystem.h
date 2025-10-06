@@ -16,6 +16,7 @@ public:
 
     int Process()
     {
+        thread.Process();
         return 0;
     }
 };

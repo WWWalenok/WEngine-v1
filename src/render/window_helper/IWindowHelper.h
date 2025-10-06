@@ -32,4 +32,4 @@ struct IWindowHelper
     virtual int GetWindowsCount() = 0;
 };
 
-static IWindowHelper* GetIWindowsHelper();
+IWindowHelper* GetIWindowsHelper();

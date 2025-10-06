@@ -40,13 +40,13 @@ void World::Update(float delta_time) {
 
 void World::RegisterTags(Ref<WObject> object) {
     for (const auto& tag : object->GetTags()) {
-        tag_registry[tag].push_back(object);
+        tag_registry[tag.first].push_back(object);
     }
 }
 
 void World::UnregisterTags(Ref<WObject> object) {
     for (const auto& tag : object->GetTags()) {
-        auto& objects = tag_registry[tag];
+        auto& objects = tag_registry[tag.first];
         auto it = std::remove(objects.begin(), objects.end(), object);
         objects.erase(it, objects.end());
     }

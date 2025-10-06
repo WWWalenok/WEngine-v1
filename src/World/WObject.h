@@ -1,18 +1,12 @@
 #pragma once
 #include "../core/core.h"
-#include <vector>
-#include <unordered_set>
-#include <string>
-#include <stdexcept>
-#include <algorithm>
+#include <unordered_map>
 
-class World;
-class Camera;
-class Light;
+struct World;
 
 class WObject {
 public:
-    WObject(std::string name = "Object");
+    WObject(const std::string& name = "Object");
     virtual ~WObject() = default;
     
     virtual bool IsComponent() const { return owner != nullptr; }
@@ -27,7 +21,7 @@ public:
     
     void AddComponent(Ref<WObject> component);
     void RemoveComponent(Ref<WObject> component);
-    std::vector<Ref<WObject>> GetComponents() const { return components; }
+    const std::vector<Ref<WObject>>& GetComponents() const { return components; }
     
     template<typename T>
     std::vector<Ref<T>> GetComponentsOfType() {
@@ -67,31 +61,51 @@ public:
     MMatrix4f GetWorldTransform() const;
     MMatrix4f GetLocalTransform() const { return local_transform; }
     
-    void AddTag(std::string tag);
+    void AddTag(std::string tag, Data value = nullptr);
     void RemoveTag(std::string tag);
     bool HasTag(std::string tag) const;
-    const std::unordered_set<std::string>& GetTags() const { return tags; }
+    Data GetTagValue(std::string tag) const;
+    const std::unordered_map<std::string, Data>& GetTags() const { return tags; }
     
-    virtual void Update(float delta_time);
+    virtual void Update(float delta_time) {}
+
+    bool IsAttachedTo(WObject* object) const { return IsAttachedToOwner(object) || IsAttachedToParent(object); };
+    bool IsAttachedToOwner(WObject* potential_owner) const;
+    bool IsAttachedToParent(WObject* potential_parent) const;
     
     std::string name;
-    World* world = nullptr;
+    Ref<World> world = nullptr;
     
 protected:
     MMatrix4f local_transform = MMatrix4f::identity();
     std::vector<Ref<WObject>> children;
     std::vector<Ref<WObject>> components;
-    std::unordered_set<std::string> tags;
+    std::unordered_map<std::string, Data> tags;
     WObject* owner = nullptr;
     WObject* parent = nullptr;
     
     virtual void AttachTo(WObject* new_owner);
     virtual void SetParent(WObject* new_parent);
     void Detach();
-    bool IsAttachedTo(WObject* object) const { return IsAttachedToOwner(object) || IsAttachedToParent(object); };
-    bool IsAttachedToOwner(WObject* potential_owner) const;
-    bool IsAttachedToParent(WObject* potential_parent) const;
 
 };
 
-DECLARE_DATA_TYPE(WObject);
+class WComponent : public WObject {
+public:
+    WComponent() = delete;
+    WComponent(WObject* owner, const std::string& name = "Component");
+    bool IsComponent() const override { return true; }
+    
+    void AddChild(Ref<WObject> child) override {
+        throw std::logic_error("Components cannot have children");
+    }
+    
+protected:
+    void InitializeAsComponent(WObject* owner);
+};
+
+class WActor : public WObject {
+public:
+    WActor(const std::string& name = "Actor");
+    virtual void AttachTo(WObject* new_owner) override { throw std::logic_error("WActor cant be component"); }
+};

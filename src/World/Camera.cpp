@@ -1,5 +1,4 @@
 #include "Camera.h"
-#include "wmath.h"
 
 Camera::Camera(std::string name) : WObject(std::move(name)) {}
 

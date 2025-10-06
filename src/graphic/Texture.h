@@ -1,22 +1,21 @@
 #pragma once
-#include "../core/data.h"
+#include "../core/core.h"
 #include "../render/rhi_helpers/IRHIHelper.h"
 
 class Texture {
 public:
-    Texture(std::string path)
-    {
-        rhimesh = IRHIHelper::Get()->GenTexture();
-        rhimesh->Update(path);
-    }
-    Texture(void* data, PixelFormat type, size_t w, size_t h)
-    {
-        rhimesh = IRHIHelper::Get()->GenTexture();
-        rhimesh->Update(data, type, w, h);
-    }
     Texture() {}
 
+    void Update()
+    {
+        if(!rhi)
+        {
+            rhi = IRHIHelper::Get()->GenTexture();
+            rhi->Update(this);
+        }
+    }
+
 private:
-    Ref<IRHITexture> rhimesh  = nullptr;
+    Ref<IRHITexture> rhi  = nullptr;
 };
 DECLARE_DATA_TYPE(Texture);

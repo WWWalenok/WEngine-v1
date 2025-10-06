@@ -38,15 +38,21 @@ public:
     
     void Start() {
         for(int i = 0; i < 10; ++i)
-            bridge->Render(&thread, nullptr, nullptr);
+        {
+            bridge->Prepare();
+            bridge->Render(nullptr, nullptr);
+            bridge->Finish();
+        }
     }
 
     int Process()
     {
         if(wh && rhi && bridge)
         {
+            bridge->Prepare();
             thread.Process();
-            auto ret = bridge->Render(&thread, currnt_world, currnt_ui);
+            auto ret = bridge->Render(currnt_world, currnt_ui);
+            bridge->Finish();
             if(ret != 0)
                 return ret;
         }

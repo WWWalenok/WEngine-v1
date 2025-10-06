@@ -1,6 +1,5 @@
 #pragma once
-#include "../core/data.h"
-#include "../core/wmath.h"
+#include "../core/core.h"
 #include "../render/rhi_helpers/IRHIHelper.h"
 #include <string>
 #include "Material.h"
