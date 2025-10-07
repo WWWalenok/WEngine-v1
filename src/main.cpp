@@ -19,7 +19,7 @@
 
 class test_t
 {
-    int w, h;
+    int w = 0, h = 0;
     bool updated = false;
 
     template<typename T>
@@ -57,26 +57,33 @@ public:
 
 int main()
 {
+    int w = 0;
+    int h = 0;
+    int s = 0;
     WeakProperty<int> t1;
+    WeakProperty<int> t2;
     test_t test;
-    t1 = test.H;
-    t1 = &test.H;
-    t1 = WeakProperty<int>(test.H);
-    t1 = WeakProperty<int>(&test.H);
-
-    std::cout << (!test.Updated ? "updated": "need update") << "\n"; test.Update();
+    t2 = test.H;
+    t2 = &test.H;
+    t2 = WeakProperty<int>(test.H);
+    t2 = WeakProperty<int>(&test.H);
+    t1 = t2;
+    std::cout << (!test.Updated ? "updated. ": "need update. ") << test.H << ", " << test.W << ", " << test.S << ", " << h << ", " << w << ", " << s << ", " << t1 << ", " << t2 << "\n"; test.Update();
     test.W = 10;
-    std::cout << (!test.Updated ? "updated": "need update") << "\n"; test.Update();
-    t1 = 20;
-    std::cout << (!test.Updated ? "updated": "need update") << "\n"; test.Update();
+    std::cout << (!test.Updated ? "updated. ": "need update. ") << test.H << ", " << test.W << ", " << test.S << ", " << h << ", " << w << ", " << s << ", " << t1 << ", " << t2 << "\n"; test.Update();
+    test.H = 50;
+    std::cout << (!test.Updated ? "updated. ": "need update. ") << test.H << ", " << test.W << ", " << test.S << ", " << h << ", " << w << ", " << s << ", " << t1 << ", " << t2 << "\n"; test.Update();
+    t1 = 40;
+    std::cout << (!test.Updated ? "updated. ": "need update. ") << test.H << ", " << test.W << ", " << test.S << ", " << h << ", " << w << ", " << s << ", " << t1 << ", " << t2 << "\n"; test.Update();
+    t2 = 30;
+    std::cout << (!test.Updated ? "updated. ": "need update. ") << test.H << ", " << test.W << ", " << test.S << ", " << h << ", " << w << ", " << s << ", " << t1 << ", " << t2 << "\n"; test.Update();
     // test.S = 5;
-    int w = test.W;
-    int h = t1;
-    std::cout << (!test.Updated ? "updated": "need update") << "\n"; test.Update();
-    int s = test.S;
-    std::cout << (!test.Updated ? "updated": "need update") << "\n"; test.Update();
+    w = test.W;
+    h = t1;
+    s = test.S;
+    std::cout << (!test.Updated ? "updated. ": "need update. ") << test.H << ", " << test.W << ", " << test.S << ", " << h << ", " << w << ", " << s << ", " << t1 << ", " << t2 << "\n"; test.Update();
 
-    std::cout << h << ", " << w << ", " << s;
+    
 }
 
 
