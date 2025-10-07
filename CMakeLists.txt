@@ -41,8 +41,8 @@ message("CPPSource ${CPPSource}")
 add_executable(test 
     glew/src/glew.c
     src/main.cpp
-    ${CSource}
-    ${CPPSource}
+    # ${CSource}
+    # ${CPPSource}
 )
 
 include_directories(
