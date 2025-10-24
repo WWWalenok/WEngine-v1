@@ -14,16 +14,12 @@ class EnhancedCxxParser:
     
     
     def parse_file_with_tags(self, filename):
-        
-        # Сначала читаем исходный файл для извлечения макросов
         with open(filename, 'r', encoding='utf-8') as f:
             source_content = f.read()
         
-        # Извлекаем теги перед объявлениями
         source_content_without_tags = self._extract_tags_from_source(source_content)
         
-        # Парсим структуру файла обычным способом
-        return parse_string(source_content_without_tags, cleandoc=True)
+        return parse_string(source_content, cleandoc=True)
     
     def _extract_tags_from_source(self, content):
         """Извлекает теги из макросов в исходном коде"""
