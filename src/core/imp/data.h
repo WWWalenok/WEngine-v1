@@ -27,7 +27,7 @@ constexpr size_t GETID(const char* name)
         hash *= 0x01000193;
     }
 
-    return (hash | (h1 << 32)) & 0xFFFFFFFFFFFFFFFEULL | 0x1ULL;
+    return ((hash & 0xffffffff) | (h1 << 32)) | 0x1ULL;
 }
 
 #define GID_V(x) data_core::GETID(x)
@@ -203,22 +203,61 @@ public:
     }
 };
 
-
 template<typename To, typename From>
 struct TypeConverterHelper
 {
     static bool Can() { return false; }
 };
 
-
-
 struct RawData
 {
-    typedef void type;
-    RawData(size_t type, const char* name) : dataType(type), name(name) {}
+    struct RefCounted
+    {
+    private:
+        friend class RawData;
+        RawData* counter;
+    };
+    std::atomic<size_t> s_counter;
+    std::atomic<size_t> w_counter;
+    bool                bind = true;
     size_t      dataType = 0;
     const char* name     = "";
-    virtual ~RawData() {};
+
+    RawData* inc()
+    {
+        ++s_counter;
+        return this;
+    }
+    
+    bool dec()
+    {
+        return (--s_counter) == 0;
+    }
+
+    RawData* winc()
+    {
+        ++w_counter;
+        return this;
+    }
+    
+    bool wdec()
+    {
+        return (--w_counter) == 0;
+    }
+
+    typedef void type;
+    RawData(size_t type, const char* name) : dataType(type), name(name) 
+    {
+        s_counter = 0;
+        w_counter = 0;
+        // printf("--> create   0x%llX\n", (size_t)this);
+    }
+
+    virtual ~RawData() 
+    {
+        // printf("--> ~destroy 0x%llX\n", (size_t)this);
+    };
+    
     template<typename T>
     T* as()
     {
@@ -226,33 +265,126 @@ struct RawData
             return (T*)ptr();
         return nullptr;
     }
-    virtual void* ptr() { return nullptr; };
-    virtual const void* ptr() const { return nullptr; };
-
+    virtual void* ptr() = 0;
+    virtual const void* ptr() const  = 0;
+    virtual void free() = 0;
 
     virtual size_t Serialize(ser::data_t& ret) const { return 0; }
     virtual size_t Deserialize(const ser::data_t& var) { return 0; }
+
+    static RawData* GetRefCountedCounter(RefCounted* rc)
+    {
+        if(auto ref = get_buffered_refcouner(rc); ref)
+        {
+            rc->counter = ref;
+        }
+        return rc->counter;
+    }
+private:
+    static SpinLocker* spl_refcouner_buffer() 
+    {
+        static SpinLocker* _ = new SpinLocker();
+        return _;
+    }
+    static std::unordered_map<RefCounted*, RawData*>* refcouner_buffer() 
+    {
+        static std::unordered_map<RefCounted*, RawData*>* _ = new std::unordered_map<RefCounted*, RawData*>();
+        return _;
+    }
+
+    static RawData* get_buffered_refcouner(RefCounted* val)
+    {
+        static auto _m = refcouner_buffer();
+        static auto _l = spl_refcouner_buffer();
+        auto& _ = _l->lock_guard();
+        auto f = _m->find(val);
+        if(f != _m->end())
+        {
+            auto ret = f->second;
+            _m->erase(f);
+            return ret;
+        }
+        return nullptr;
+    }
+protected:
+
+    static void add_buffered_refcouner(RefCounted* val, RawData* counter)
+    {
+        static auto _m = refcouner_buffer();
+        static auto _l = spl_refcouner_buffer();
+        auto& _ = _l->lock_guard();
+        _m->insert({val, counter});
+    }
+
+    static void SetRefCountedCounter(RefCounted* rc, RawData* value)
+    {
+        rc->counter = value;
+    }
 };
 
 template<typename T>
 struct RawValue : public RawData
 {
 private:
-    RawValue(T* value) : RawData(Helper<T>::ID(), Helper<T>::NAME()), data(value) {}
+    RawValue() : RawData(Helper<T>::ID(), Helper<T>::NAME()) {}
+    RawValue(T* value) : RawData(Helper<T>::ID(), Helper<T>::NAME()), data(value) {  }
+    RawValue(const RawValue&) = delete;
+    RawValue(const RawValue&&) = delete;
+    RawValue(RawValue&&) = delete;
+    RawData operator=(const RawData& _) = delete;
+    RawData operator=(const RawData&& _) = delete;
+    RawData operator=(RawData&& _) = delete;
+    T*                     data;
 public:
     static_assert(!std::is_same_v<bool, T>, "Data cannot store a \"bool\" value");
     typedef T type;
-    RawValue() : RawData(Helper<T>::ID(), Helper<T>::NAME()) {}
+
+    inline static RawData* make_from_ptr(T* _data)
+    {
+        if constexpr (std::is_base_of_v<RefCounted, T>)
+        {
+            auto old = GetRefCountedCounter(_data);
+            if(old != nullptr)
+                return old;
+            
+            auto value = new RawValue<T>(_data);
+            SetRefCountedCounter(_data, value);
+            return value;
+        }
+        else
+        {
+            return new RawValue<T>(_data);
+        }
+        return nullptr;
+    }
+
     template<typename... TS>
-    inline static RawData* make(TS... ts) { return new RawValue<T>(new T(ts...)); }
-    inline static RawData* make_from_ptr(T* _data) { return new RawValue<T>(_data); }
-    inline static RawData* make_empty() { return new RawValue<T>(); }
-    T*                     data;
-    virtual ~RawValue() { delete data; };
+    inline static RawData* make(TS... ts) { 
+        
+        T* _data = (T*)malloc(sizeof(T));
+        RawValue<T>* value = new RawValue<T>(_data);
+        if constexpr (std::is_base_of_v<RefCounted, T>)
+        {
+            add_buffered_refcouner(_data, value);
+        }
+        new (_data)T(ts...);
+        return value;
+    }
+    virtual ~RawValue() {
+        if(data)
+            delete data;
+    };
+
     virtual void* ptr() override { return data; }
-    virtual const void* ptr() const override { return data; };
-                  operator T&() { return data; }
-                  operator const T&() const { return *data; }
+    virtual const void* ptr() const override { return data; }
+    virtual void free() {
+        if(data)
+            delete data;
+        data = nullptr;
+    }
+
+    operator T&() { return data; }
+    operator const T&() const { return *data; }
     template<bool A = typename std::enable_if<std::is_pointer<T>::value == true>::type* = nullptr>
     auto& operator->()
     {
@@ -303,48 +435,11 @@ struct RawValue<char[S]> : public RawValue<std::string>
     inline static RawData* make(const char (*&_data)[S]) { return new RawValue<std::string>(*_data); }
 };
 
-struct __counter_t
-{
-    std::atomic<size_t> s_counter;
-    std::atomic<size_t> w_counter;
-    RawData*            data = nullptr;
-    
-    __counter_t(RawData* data) : data(data) {  
-        s_counter = 1; 
-        w_counter = 0;
-        printf("--> create   0x%llX\n", this); 
-    }
-
-    __counter_t* inc()
-    {
-        ++s_counter;
-        return this;
-    }
-    
-    bool dec()
-    {
-        return (--s_counter) == 0;
-    }
-
-    __counter_t* winc()
-    {
-        ++w_counter;
-        return this;
-    }
-    
-    bool wdec()
-    {
-        return (--w_counter) == 0;
-    }
-
-    ~__counter_t() { printf("--> ~destroy 0x%llX\n", this); }
-};
-
 template<bool weak = false>
 struct _smart_pointer
 {
-    __counter_t* counter = nullptr;
-    std::function<bool(void*)> deallocator = nullptr;
+    RawData* counter = nullptr;
+    std::function<bool(RawData*)> deallocator = nullptr;
 
     void dec_impl()
     {
@@ -364,17 +459,19 @@ struct _smart_pointer
         {
             if (counter->dec())
             {
-                printf("--> delete   0x%llX->0x%llX\n", counter->data, counter->data->ptr());
-                if (deallocator)
+                // printf("--> delete   0x%llX->0x%llX\n", (size_t)counter, (size_t)counter->ptr());
+                if (counter && counter->bind)
                 {
-                    if (deallocator(counter->data->ptr()))
-                        delete counter->data;
+                    if (deallocator)
+                    {
+                        if (deallocator(counter))
+                            counter->free();
+                    }
+                    else
+                    {
+                        counter->free();
+                    }
                 }
-                else
-                {
-                    delete counter->data;
-                }
-                counter->data = nullptr;
                 
                 if (counter->w_counter.load() == 0)
                 {
@@ -386,7 +483,15 @@ struct _smart_pointer
 
     _smart_pointer() = default;
 
-    _smart_pointer(RawData* value) : counter(new __counter_t(value)) { }
+    _smart_pointer(RawData* value) : counter(value) {
+        if (value)
+        {
+            if constexpr (weak)
+                counter = value->winc();
+            else
+                counter = value->inc();
+        }
+    }
 
     template<typename... T, typename check = std::enable_if_t<!weak>>
     static _smart_pointer make(T... value)
@@ -397,6 +502,8 @@ struct _smart_pointer
     template<typename T, typename check = std::enable_if_t<!weak>>
     static _smart_pointer make_from_ptr(T* value)
     {
+        if(!value)
+            return _smart_pointer();
         return _smart_pointer(RawValue<T>::make_from_ptr(value));
     }
 
@@ -466,8 +573,8 @@ struct _smart_pointer
         counter = nullptr;
     }
 
-    RawData*       data() { return counter ? counter->data : nullptr; }
-    const RawData* data() const { return counter ? counter->data : nullptr; }
+    RawData*       data() { return counter; }
+    const RawData* data() const { return counter; }
 
     ~_smart_pointer() { dec_impl(); }
 };
@@ -479,14 +586,10 @@ struct IBasePointer
     virtual void __from(const _smart_pointer<true>& _)  = 0;
     virtual void __from(const _smart_pointer<false>& _) = 0;
 
-
-    virtual RawData*       __data()       = 0;
-    virtual const RawData* __data() const = 0;
-
-    virtual void*       __ptr()       = 0;
-    virtual const void* __ptr() const = 0;
-
     virtual void __setDeallocator(std::function<bool(void*)> deallocator) = 0;
+
+    virtual void __unbind() = 0;
+    virtual void __bind() = 0;
 };
 
 struct BasePointer : public IBasePointer
@@ -524,14 +627,16 @@ public:
         imp = _smart_pointer<false>::make_from_ptr(value);
     }
 
+    inline RawData*       __data() { return imp.data(); }
+    inline const RawData* __data() const { return imp.data(); }
 
-    virtual RawData*       __data() { return imp.data(); }
-    virtual const RawData* __data() const { return imp.data(); }
-
-    virtual void*       __ptr()       { auto t = imp.data(); return t ? t->ptr() : nullptr; }
-    virtual const void* __ptr() const { auto t = imp.data(); return t ? t->ptr() : nullptr; }
+    inline void*       __ptr()       { auto t = imp.data(); return t ? t->ptr() : nullptr; }
+    inline const void* __ptr() const { auto t = imp.data(); return t ? t->ptr() : nullptr; }
 
     virtual void __setDeallocator(std::function<bool(void*)> deallocator) { imp.deallocator = deallocator; }
+
+    virtual void __unbind() { imp.counter->bind = 0; }
+    virtual void __bind() { imp.counter->bind = 1; }
 };
 
 struct WeakBasePointer : public IBasePointer
@@ -557,15 +662,17 @@ public:
         return *this;
     }
 
-    virtual RawData*       __data() { return imp.data(); }
-    virtual const RawData* __data() const { return imp.data(); }
+    inline RawData*       __data() { return imp.data(); }
+    inline const RawData* __data() const { return imp.data(); }
 
-    virtual void*       __ptr()       { auto t = imp.data(); return t ? t->ptr() : nullptr; }
-    virtual const void* __ptr() const { auto t = imp.data(); return t ? t->ptr() : nullptr; }
+    inline void*       __ptr()       { auto t = imp.data(); return t ? t->ptr() : nullptr; }
+    inline const void* __ptr() const { auto t = imp.data(); return t ? t->ptr() : nullptr; }
 
-    virtual void __setDeallocator(std::function<bool(void*)> deallocator) { }
+    virtual void __setDeallocator(std::function<bool(void*)> deallocator) { throw (std::logic_error("weak can`t control counter state")); }
+
+    virtual void __unbind() { throw (std::logic_error("weak can`t control counter state")); }
+    virtual void __bind() { throw (std::logic_error("weak can`t control counter state")); }
 };
-
 
 struct defautl_deallocator
 {
@@ -578,14 +685,8 @@ struct Pointer : public BasePointer
     Pointer() { this->__setDeallocator(DEALLOCATOR()); }
 
     template<typename D>
-    Pointer(Pointer<T, D>& _) : BasePointer(_)
-    {}
-    template<typename D>
-    Pointer(Pointer<T, D>&& _) : BasePointer(_)
-    {}
-    template<typename D>
-    Pointer(const Pointer<T, D>& _) : BasePointer(_)
-    {}
+    Pointer(const Pointer<T, D>& _) : BasePointer(&_) {}
+
     template<typename D>
     Pointer& operator=(const Pointer<T, D>& _)
     {
@@ -600,44 +701,85 @@ struct Pointer : public BasePointer
     }
 
     Pointer(T* value) : BasePointer(_smart_pointer<false>::make_from_ptr<T>(value)) {  
+        static_assert(std::is_base_of_v<RawData::RefCounted, T>,
+                  "T must derive from RawData::RefCounted");
         this->__setDeallocator(DEALLOCATOR());
     }
 
-    void reset(T* value)
+    Pointer(nullptr_t) : BasePointer(_smart_pointer<false>::make_from_ptr<T>(nullptr)) { }
+
+    void reset(T* value = nullptr)
     {
         this->__from(_smart_pointer<false>::make_from_ptr(value));
         this->__setDeallocator(DEALLOCATOR());
     }
 
-    operator T*() { 
-        return (T*)__ptr(); 
-    }
+    __declspec(noinline) T* __get() { return (T*)__ptr(); }
+    __declspec(noinline) const T* __get() const { return (T*)__ptr(); }
 
     operator const T*() const { 
-        return (T*)__ptr(); 
+        return __get(); 
+    }
+
+    operator T*() { 
+        return __get();
+    }
+
+    T* get() { 
+        return __get();
+    }
+
+    const T* get() const { 
+        return __get();
+    }
+
+    template<typename V, typename check = std::enable_if<std::is_base_of<V, T>::value>::type>
+    operator Pointer<V, DEALLOCATOR>() const { 
+        auto ret = Pointer<V, DEALLOCATOR>();
+        this->__to(&ret);
+        return ret;
     }
 
     T* operator->() { 
         return ((T*)__ptr()); 
     }
 
-    bool has() const { return __data() != nullptr; }
+    const T* operator->() const { 
+        return ((T*)__ptr()); 
+    }
+
+    bool has() const { return __ptr() != nullptr; }
+
+    inline operator bool () const
+    {
+        return __ptr() != nullptr;
+    }
+
+    template<typename V, typename check = std::enable_if<std::is_base_of<V, T>::value>::type>
+    inline bool operator==(const Pointer<V, DEALLOCATOR>& rhs) const {
+        return __ptr() == rhs.__ptr();
+    }
+
+    template<typename V, typename check = std::enable_if<std::is_base_of<V, T>::value>::type>
+    inline bool operator!=(const Pointer<V, DEALLOCATOR>& rhs) const {
+        return __ptr() != rhs.__ptr();
+    }
 };
 
 template<typename T>
 struct WeakPointer : public WeakBasePointer
 {
-    WeakPointer() { }
+    WeakPointer() : WeakBasePointer() {}
+
+    WeakPointer(nullptr_t) : WeakBasePointer()
+    {
+    }
 
     template<typename D>
-    WeakPointer(Pointer<T, D>& _) : WeakBasePointer(_)
-    {}
-    template<typename D>
-    WeakPointer(Pointer<T, D>&& _) : WeakBasePointer(_)
-    {}
-    template<typename D>
-    WeakPointer(const Pointer<T, D>& _) : WeakBasePointer(_)
-    {}
+    WeakPointer(const Pointer<T, D>& _) : WeakBasePointer(&_)
+    {
+    }
+
     template<typename D>
     WeakPointer& operator=(const Pointer<T, D>& _)
     {
@@ -659,46 +801,30 @@ struct WeakPointer : public WeakBasePointer
     
     Pointer<T> lock() const 
     {
+        if(!has())
+        {
+            return nullptr;
+        }
         auto ret = Pointer<T>();
         this->__to(&ret);
         return ret;
     }
 
-    operator T*() { 
-        return (T*)__ptr(); 
-    }
+    inline bool has() const { return __data() != nullptr; }
 
-    operator const T*() const { 
-        return (T*)__ptr(); 
+    operator bool () const
+    {
+        return __ptr() != nullptr;
     }
-
-    T* operator->() { 
-        return ((T*)__ptr()); 
-    }
-
-    bool has() const { return __data() != nullptr; }
 };
 
 struct Data : public BasePointer
 {
     Data() = default;
-    Data(Data& _) : BasePointer(&_) {}
-    Data(Data&& _) : BasePointer(&_) {}
     Data(const Data& _) : BasePointer(&_) {}
-    Data(const Data&& _) : BasePointer(&_) {}
 
     template<typename... T>
-    Data(Pointer<T...>& _) : BasePointer(&_)
-    {}
-    template<typename... T>
-    Data(Pointer<T...>&& _) : BasePointer(&_)
-    {}
-    template<typename... T>
-    Data(const Pointer<T...>& _) : BasePointer(&_)
-    {}
-    template<typename... T>
-    Data(const Pointer<T...>&& _) : BasePointer(&_)
-    {}
+    Data(const Pointer<T...>& _) : BasePointer(&_) {}
 
     Data& operator=(const Data& _)
     {
@@ -912,12 +1038,25 @@ struct Data : public BasePointer
         throw std::runtime_error(std::string("Trying to get an incorrect type from data. Current: ") + __data()->name + ". Requested: " + Helper<T>::NAME() + ".");
     }
 
+    operator bool () const
+    {
+        return __data() != nullptr;
+    }
+
+    bool operator==(const Data& rhs) const {
+        return __data() == rhs.__data();
+    }
+
+    bool operator!=(const Data& rhs) const {
+        return __data() != rhs.__data();
+    }
+
     /*!
      * @brief Check if data contains a value
      * @return true if data is not empty, false otherwise
      * @note Equivalent to operator bool() but more explicit
      */
-    bool        has() const { return __data() != nullptr; }
+    bool        has() const { return __ptr() != nullptr; }
     size_t      Serialize(ser::data_t& ret) const { return __data()->Serialize(ret); }
     ser::data_t Serialize() const
     {
@@ -938,6 +1077,75 @@ struct Data : public BasePointer
     void* sender = nullptr;
 };
 
+struct WeakData : public WeakBasePointer
+{
+    WeakData() = default;
+    WeakData(const WeakData& _) : WeakBasePointer(&_) {}
+
+    template<typename... T>
+    WeakData(const Pointer<T...>& _) : WeakBasePointer(&_) {}
+
+    WeakData& operator=(const Data& _)
+    {
+        _.__to(this);
+        return *this;
+    }
+
+    WeakData& operator=(const WeakData& _)
+    {
+        _.__to(this);
+        return *this;
+    }
+
+    template<typename T>
+    WeakData& operator=(const Pointer<T>& _)
+    {
+        _.__to(this);
+        return *this;
+    }
+
+    template<typename T>
+    WeakData& operator=(const WeakPointer<T>& _)
+    {
+        _.__to(this);
+        return *this;
+    }
+
+    WeakData(const nullptr_t*& value) : WeakBasePointer() {}
+
+
+    template<typename T>
+    bool is()
+    {
+        if (__data() == nullptr)
+            return false;
+        if constexpr (std::is_base_of<RawData, T>::value)
+            return __data()->as<typename T::type>();
+        else
+            return __data()->as<T>();
+    }
+
+    operator bool () const
+    {
+        return __ptr() != nullptr;
+    }
+
+    
+    Data lock() const 
+    {
+        auto ret = Data();
+        this->__to(&ret);
+        return ret;
+    }
+    
+    template<typename T>
+    Pointer<T> lock() const 
+    {
+        auto ret = Pointer<T>();
+        this->__to(&ret);
+        return ret;
+    }
+};
 
 template<typename T>
 static constexpr size_t ID()
@@ -1193,15 +1401,74 @@ struct Helper<Ret(Vars...)>
 
 template<typename... ARGS>
 using Ref = data_core::Pointer<ARGS...>;
-template<typename... ARGS>
-using WeakRef = data_core::WeakPointer<ARGS...>;
+template<typename T>
+using WeakRef = data_core::WeakPointer<T>;
+
+using RefCounted = data_core::RawData::RefCounted;
+
+template<typename T, typename DEALLOCATOR = nullptr_t, typename... ARGS>
+Ref<T, DEALLOCATOR> MakeRef(ARGS... args)
+{
+    T* raw = (T*)malloc(sizeof(T));
+    data_core::Pointer<T, DEALLOCATOR> value;
+    value.__from(data_core::_smart_pointer<false>(data_core::RawValue<T>::make(args...)));
+    return value;
+}
+
+template<typename T, typename DEALLOCATOR = nullptr_t>
+Ref<T, DEALLOCATOR> GetSelfRef(T* self)
+{
+    if constexpr (std::is_base_of_v<data_core::RawData::RefCounted, T>)
+    {
+        data_core::RawData* counter = data_core::RawData::GetRefCountedCounter(self);
+        if(!counter)
+        {
+            return Ref<T, DEALLOCATOR>(self);
+        }
+        counter->inc();
+        auto pointer = data_core::_smart_pointer(counter);
+        Ref<T, DEALLOCATOR> value;
+        value.__from(pointer);
+        return value;
+    }
+    else
+    {
+        return nullptr;
+    }
+}
 
 template<typename To, typename From, typename... ARGS>
-constexpr static To* RefCast(Ref<From, ARGS...>& v)
+constexpr static Ref<To, ARGS...> RefCast(Ref<From, ARGS...> v)
 {
-    return dynamic_cast<To*>((From*)(v));
+    if(dynamic_cast<To*>((From*)(v)))
+    {
+        auto ret = Ref<To, ARGS...>();
+        v.__to(&ret);
+        return ret;
+    }
+    return nullptr;
+}
+
+template<typename To, typename From, typename... ARGS>
+constexpr static Ref<To, ARGS...> StaticRefCast(Ref<From, ARGS...> v)
+{
+    if(static_cast<To*>((From*)(v)))
+    {
+        auto ret = Ref<To, ARGS...>();
+        v.__to(&ret);
+        return ret;
+    }
+    return nullptr;
 }
 using Data = data_core::Data;
+
+template <typename T, typename DEALLOCATOR>
+struct std::hash<Ref<T, DEALLOCATOR>> {
+    
+    size_t operator()(const Ref<T, DEALLOCATOR>& _Keyval) const {
+        return std::hash<decltype(_Keyval.get())>()(_Keyval.get());
+    }
+};
 
 DECLARE_DATA_TYPE_AND_DEFAULT_SERIALIZER(long long);
 DECLARE_DATA_TYPE_AND_DEFAULT_SERIALIZER(long);
@@ -1275,6 +1542,7 @@ DECLARE_DATA_SERIALIZABLE(data_core::Data);
 // std::string
 
 DECLARE_DATA_TYPE(std::string);
+DECLARE_DATA_SERIALIZER_FUNC(std::string);
 DECLARE_DATA_SERIALIZER_FUNC(std::string)
 {
     DECLARE_DATA_SERIALIZER_DEFAULT_HEADER(std::string);

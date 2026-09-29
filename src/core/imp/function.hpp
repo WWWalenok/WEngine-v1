@@ -40,6 +40,7 @@ struct srv_function<Ret(Vars...)>
         virtual size_t gid() = 0;
         virtual T doit(ARGS...) = 0;
         virtual Callable<T, ARGS...>* copy() const = 0;
+        virtual ~Callable() = default;
     };
 
     template<typename Call, typename T, typename... ARGS>
@@ -47,7 +48,7 @@ struct srv_function<Ret(Vars...)>
         static_assert(std::is_invocable_r<T, std::decay_t<Call>&, ARGS...>::value, "Uncorrect Caller");
 
         ImplCallable(Call _val) : val(_val) {}
-        ~ImplCallable() {if(callable) delete callable; }
+        ~ImplCallable() override = default;
         Call val;
         virtual size_t gid()
         {
@@ -89,6 +90,13 @@ struct srv_function<Ret(Vars...)>
         std::is_invocable_r<Ret, std::decay_t<Call>&, Vars...>
     >::value>;
 
+
+    template<typename Call>
+    using check_callable_nr = std::enable_if_t<
+        std::is_invocable_v<std::decay_t<Call>&, Vars...> && 
+        std::is_void_v<void> && 
+        std::is_same_v<void, std::invoke_result_t<std::decay_t<Call>&, Vars...>>
+    >;
     srv_function() {
         callable = nullptr;
     }
@@ -103,8 +111,33 @@ struct srv_function<Ret(Vars...)>
     }
 
     srv_function(const srv_function<Ret(Vars...)>& val) {
-        callable = val.callable->copy();
+        if(val.callable)
+            callable = val.callable->copy();
+        else
+            callable = nullptr;
     }
+
+    srv_function& operator =(nullptr_t) {
+        free();
+        return *this;
+    }
+
+    srv_function& operator =(const srv_function<Ret(Vars...)>& val) 
+    {
+        free();
+        if(val.callable)
+            callable = val.callable->copy();
+        return *this;
+    }
+
+    template<typename Call, typename Check = check_callable<Call>>
+    srv_function& operator =(Call val) {
+        free();
+        if(val.callable)
+            callable = val.callable->copy();
+        return *this;
+    }
+
 
     size_t tid() const { return callable ? callable->gid() : 0; }
 
@@ -120,4 +153,15 @@ struct srv_function<Ret(Vars...)>
     bool operator ==(const srv_function<_Fty2>& other) { return tid() == other.tid(); }
     template<typename _Fty2>
     bool operator !=(const srv_function<_Fty2>& other) { return tid() != other.tid(); }
+
+    void free()
+    {
+        if(callable)
+            delete callable;
+        callable = nullptr;
+    }
+
+    ~srv_function() {
+        free();
+    }
 };

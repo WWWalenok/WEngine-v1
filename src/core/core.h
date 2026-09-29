@@ -1,5 +1,8 @@
 #pragma once
 
+#define WENGINE_CLASS(...)
+#define WENGINE_FIELD(...)
+#define WENGINE_FUNCTION(...)
 
 #include "imp/lockfreelist.h"
 #include "imp/thread_pool.h"
@@ -10,3 +13,8 @@
 #include "imp/Property.h"
 
 #include "imp/ISystem.h"
+
+class CoreObject : public RefCounted
+{
+
+};

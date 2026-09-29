@@ -1,21 +1,21 @@
 #pragma once
 #include "../core/core.h"
-#include "../render/rhi_helpers/IRHIHelper.h"
+#include "../render/IRHIHelper.h"
 
-class Texture {
+class Image;
+
+class Texture : public CoreObject  {
 public:
-    Texture() {}
-
-    void Update()
-    {
-        if(!rhi)
-        {
-            rhi = IRHIHelper::Get()->GenTexture();
-            rhi->Update(this);
-        }
-    }
+    Texture();
+    
+    void Update();
+    
+    Property<Ref<Image>> image;
+    ReadOnlyProperty<Ref<IRHITexture>> rhi;
+    ReadOnlyProperty<bool> dirty;
 
 private:
-    Ref<IRHITexture> rhi  = nullptr;
+    Ref<IRHITexture> _rhi = nullptr;
+    Ref<Image> _image = nullptr;
+    bool _dirty = false;
 };
-DECLARE_DATA_TYPE(Texture);

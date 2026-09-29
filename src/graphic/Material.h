@@ -1,25 +1,11 @@
 #pragma once
 #include "../core/core.h"
 
-
-#include "Map.h"
-#include "../render/rhi_helpers/IRHIHelper.h"
-#include <string>
-
 struct Map;
 
 struct Material
 {
-    // Material Name
     std::string name = "";
-
-    // Diffuse Map
-    Ref<Map> DiffuseMap = nullptr;
-
-    // Specular Glossiness Roughness Map
-    Ref<Map> SGRMap = nullptr;
-
-    // Alpha Map
-    Ref<Map> AlphaMap = nullptr;
+    std::string type = "";
+    std::unordered_map<std::string, Ref<Map>> _maps;
 };
-DECLARE_DATA_TYPE(Material);

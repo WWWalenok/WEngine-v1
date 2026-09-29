@@ -6,13 +6,13 @@ class CoreSystem : public ISystem
 {
     DECLARE_SYSTEM(CoreSystem);
     CoreSystem() :
-        thread(0, true)
+        thread(1)
     {
 
     }
 public:
 
-    ThredaPool thread;
+    ThreadPool thread;
 
     int Process()
     {

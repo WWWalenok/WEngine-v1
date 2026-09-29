@@ -1,10 +1,10 @@
 #pragma once
 #include "../core/core.h"
-#include "../render/rhi_helpers/IRHIHelper.h"
+#include "../render/IRHIHelper.h"
 #include <string>
 #include "Material.h"
 
-struct Mesh
+struct Mesh : public CoreObject 
 {
     struct Vertex
     {
@@ -20,15 +20,21 @@ struct Mesh
 
     Ref<Material> material = nullptr;
     Ref<IRHIMesh> rhimesh  = nullptr;
+
+    void Update() {
+        if (!rhimesh) {
+            rhimesh = IRHIHelper::Get()->GenMesh();
+        }
+        rhimesh->Update(this);
+    }
 };
-DECLARE_DATA_TYPE(Mesh);
 
 struct Skeleton
 {
 
     struct Bone
     {
-        Ref<Skeleton>    skeleton;
+        WeakRef<Skeleton>    skeleton;
         int              parent = -1;
         int              id;
         std::vector<int> childs;
@@ -37,9 +43,15 @@ struct Skeleton
     std::vector<MMatrix4f> boneMatrices;
     std::vector<Bone> bones;
     Ref<IRHISkeleton> rhiskeleton = nullptr;
+
+    void Update() {
+        if (!rhiskeleton) {
+            rhiskeleton = IRHIHelper::Get()->GenSkeleton();
+        }
+        rhiskeleton->Update(this);
+    }
 };
 
-DECLARE_DATA_TYPE(Skeleton);
 
 struct SkeletalMesh
 {
@@ -59,6 +71,12 @@ struct SkeletalMesh
 
     Ref<Material> material = nullptr;
     Ref<IRHIMesh> rhimesh  = nullptr;
+
+    void Update() {
+        if (!rhimesh) {
+            rhimesh = IRHIHelper::Get()->GenMesh();
+        }
+        rhimesh->Update(this);
+    }
 };
 
-DECLARE_DATA_TYPE(SkeletalMesh);

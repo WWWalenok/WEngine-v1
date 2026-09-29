@@ -34,15 +34,26 @@ set(version_file version.h)
 include(cmake/IncVersion.cmake)
 
 FILE(GLOB_RECURSE  CSource src/*.c)
+FILE(GLOB_RECURSE  CCSource src/*.cc)
 FILE(GLOB_RECURSE  CPPSource src/*.cpp)
 
 message("CPPSource ${CPPSource}")
 
 add_executable(test 
+    # src/core/WLoger/src/WLoger.cpp
     glew/src/glew.c
     src/main.cpp
-    # ${CSource}
-    # ${CPPSource}
+    ${CSource}
+    ${CCSource}
+    ${CPPSource}
+)
+
+target_compile_definitions(test PRIVATE
+    _ITERATOR_DEBUG_LEVEL=0
+    WL_EANBLE_TYMETRACE
+    WL_TYMETRACE_THREAD_SEPARATED
+    NOMINMAX
+    GLEW_STATIC
 )
 
 include_directories(
@@ -51,4 +62,5 @@ include_directories(
 
 target_link_libraries(test
     opengl32
+    "H:\\theinvaders\\meta_core\\Plugins\\META\\Code\\MetaWebBrowser\\Binaries\\ThirdParty\\CEF3\\Win64\\meta_libcef.lib"
 )

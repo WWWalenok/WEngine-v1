@@ -1075,8 +1075,8 @@ public:
             auto f = root.props.find(prop);
             if(f != root.props.end())
                 root.props[prop] = data;
-            return
-                root.props.insert({prop, data});
+            root.props.insert({prop, data});
+            return;
         }
 
         tree_item* exists = tree_item::get_folder(parent_item, name);
@@ -1086,8 +1086,8 @@ public:
         auto f = exists->props.find(prop);
         if(f != exists->props.end())
             exists->props[prop] = data;
-        return
-            exists->props.insert({prop, data});
+        exists->props.insert({prop, data});
+        return;
     }
 
     ~WFS()

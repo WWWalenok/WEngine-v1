@@ -1,5 +1,7 @@
+#ifndef __IWINDOWHELPER_H__
+#define __IWINDOWHELPER_H__
 
-#pragma once
+#include "../core/core.h"
 #include <string>
 
 
@@ -13,6 +15,9 @@ struct IWindow
         virtual void OnKeyDown(IWindow*, void* wParam) {};
         virtual void OnDestroy(IWindow*) {};
         virtual void OnClose(IWindow*) {};
+        virtual void OnActivate(IWindow*) {};
+        virtual void OnSwap(IWindow*) {};
+        virtual void OnGetSize(const IWindow*, int& width, int& height) {};
     };
 
     virtual void SetEventHandler(EventHandler*) = 0;
@@ -22,14 +27,22 @@ struct IWindow
     virtual void* GetExtImp() = 0;
     template<typename T>
     T* GetExt() { return GetExtSize() < sizeof(T) ? nullptr : (T*)GetExtImp(); }
+
+    virtual void Activate() = 0;
+    virtual void Swap() = 0;
+    virtual void GetSize(int& width, int& height) const = 0;
+
+    virtual bool Valid() const = 0;
 };
 
 struct IWindowHelper
 {
-    virtual IWindow* MakeWindow(IWindow::EventHandler*, std::string, int = 512, int = 512) = 0;
+    virtual Ref<IWindow> MakeWindow(IWindow::EventHandler*, std::string, int = 512, int = 512) = 0;
 
-    virtual IWindow* GetWindows() = 0;
+    virtual IWindow** GetWindows() = 0;
     virtual int GetWindowsCount() = 0;
 };
 
 IWindowHelper* GetIWindowsHelper();
+
+#endif // __IWINDOWHELPER_H__

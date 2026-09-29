@@ -13,5 +13,3 @@ public:
     float range = 10.0f;
     float spot_angle = 45.0f;
 };
-
-DECLARE_DATA_TYPE(Light);

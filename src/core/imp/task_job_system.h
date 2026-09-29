@@ -314,17 +314,17 @@ public:
             TaskProcess();
     }
 private:
-    static void JobThredaPoolThread(TaskJobSystem* self, int id)
+    static void JobThreadPoolThread(TaskJobSystem* self, int id)
     {
         while(self->run.load()) if(self->JobProcess() == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    static void TaskThredaPoolThread(TaskJobSystem* self, int id)
+    static void TaskThreadPoolThread(TaskJobSystem* self, int id)
     {
         while(self->run.load()) if(self->TaskProcess() == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
     }
 
-    static void AnyTaskThredaPoolThread(TaskJobSystem* self, int id)
+    static void AnyTaskThreadPoolThread(TaskJobSystem* self, int id)
     {
         if(id != 0 || !self->greedy)
             while(self->run.load()) if(self->AnyProcess() == 0) std::this_thread::sleep_for(std::chrono::milliseconds(1));
@@ -344,17 +344,17 @@ public:
         anypool.resize(ANYTHCOUNT);
         for(int i = 0; i < TASKTHCOUNT; i++)
         {
-            taskpool[i] = std::thread(TaskThredaPoolThread, this, i);
+            taskpool[i] = std::thread(TaskThreadPoolThread, this, i);
             taskpool[i].detach();
         }
         for(int i = 0; i < JOBTHCOUNT; i++)
         {
-            jobpool[i] = std::thread(JobThredaPoolThread, this, i);
+            jobpool[i] = std::thread(JobThreadPoolThread, this, i);
             jobpool[i].detach();
         }
         for(int i = 0; i < ANYTHCOUNT; i++)
         {
-            anypool[i] = std::thread(AnyTaskThredaPoolThread, this, i);
+            anypool[i] = std::thread(AnyTaskThreadPoolThread, this, i);
             anypool[i].detach();
         }
     }

@@ -3,19 +3,18 @@
 Camera::Camera(std::string name) : WObject(std::move(name)) {}
 
 void Camera::SetTarget(MVector3f target) {
-    target_position = target;
+    auto position = GetWorldPosition();
+    MVector3f forward = (target - position).GetNormalized();
+    MVector3f worldUp(0.0f, 0.0f, 1.0f);
+    MVector3f right = (forward / worldUp).GetNormalized();   // cross
+    MVector3f up    = (right / forward).GetNormalized();     // cross
+
+    MMatrix4f viewMatrix = wm::LookAt(position, target, up);
+    SetWorldTransform(viewMatrix.invert());
 }
 
 MMatrix4f Camera::GetViewMatrix() const {
-    auto position = GetPosition();
-    auto forward = (target_position - position);
-    forward = forward / !forward;
-    auto right = MVector3f(0.0f, 0.0f, 1.0f) / forward;
-    right = right / !right;
-    auto up = forward / right;
-    up = up / !up;
-    
-    return wm::LookAt(position, target_position, up);
+    return GetWorldTransform().invert();
 }
 
 MMatrix4f Camera::GetProjectionMatrix(float aspect) const {

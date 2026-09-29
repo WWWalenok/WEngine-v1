@@ -11,10 +11,8 @@ public:
     
     void Update(float delta_time) override;
     
-    MVector3f target_position = {0.0f, 0.0f, 0.0f};
     float fov = 60.0f;
     float near_clip = 0.1f;
     float far_clip = 1000.0f;
 };
 
-DECLARE_DATA_TYPE(Camera);

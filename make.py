@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 
 import re
-from cxxheaderparser.types import *
-from cxxheaderparser.simple import *
+from header_parser.types import *
+from header_parser.simple import *
 import hashlib
 
 class EnhancedCxxParser:
