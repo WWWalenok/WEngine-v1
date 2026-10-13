@@ -1,6 +1,4 @@
 #pragma once
-#include "def.h"
-#if WITH_H
 #include "OpenglRenderGraphBuilder.h" 
 #include "OpenglRenderNodes.h" 
 #include "OpenglRHIResources.h"
@@ -40,4 +38,3 @@ Ref<IRHIRenderGraphBuilder> OpenglRHIHelper::GenRenderGraphBuilder()
 {
     return MakeRef<OpenglRenderGraphBuilder>();
 }
-#endif
