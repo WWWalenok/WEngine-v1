@@ -83,7 +83,7 @@ public:
         size_t target_pin_id = 0;
     };
 
-    void SetName(const std::string &name)
+    void SetName(const std::string& name)
     {
         _name = name;
     }
@@ -92,11 +92,11 @@ public:
         return _name;
     }
 
-    void SetRGB(RenderGraphBuilder *rgb)
+    void SetRGB(RenderGraphBuilder* rgb)
     {
         _RGB = rgb;
     }
-    RenderGraphBuilder *GetRGB() const
+    RenderGraphBuilder* GetRGB() const
     {
         return _RGB;
     }
@@ -110,16 +110,16 @@ public:
         return _outputs;
     }
 
-    Pin *GetInputByName(const std::string &name)
+    Pin* GetInputByName(const std::string& name)
     {
         if (_RGB)
             _RGB->SetDirty();
-        for (auto &pin : _inputs)
+        for (auto& pin : _inputs)
             if (pin.name == name)
                 return &pin;
         return nullptr;
     }
-    Pin *GetInputById(const size_t &id)
+    Pin* GetInputById(const size_t& id)
     {
         if (_RGB)
             _RGB->SetDirty();
@@ -127,7 +127,7 @@ public:
             return &_inputs[id];
         return nullptr;
     }
-    size_t GetInputIdByName(const std::string &name)
+    size_t GetInputIdByName(const std::string& name)
     {
         if (_RGB)
             _RGB->SetDirty();
@@ -137,14 +137,14 @@ public:
         return 0xffffffffffffffff;
     }
 
-    Pin *GetOutputByName(const std::string &name)
+    Pin* GetOutputByName(const std::string& name)
     {
-        for (auto &pin : _outputs)
+        for (auto& pin : _outputs)
             if (pin.name == name)
                 return &pin;
         return nullptr;
     }
-    Pin *GetOutputById(const size_t &id)
+    Pin* GetOutputById(const size_t& id)
     {
         if (_RGB)
             _RGB->SetDirty();
@@ -152,7 +152,7 @@ public:
             return &_outputs[id];
         return nullptr;
     }
-    size_t GetOutputIdByName(const std::string &name)
+    size_t GetOutputIdByName(const std::string& name)
     {
         if (_RGB)
             _RGB->SetDirty();
@@ -162,7 +162,7 @@ public:
         return 0xffffffffffffffff;
     }
 
-    void BindInput(const size_t &my_input_id, Ref<RGBNode> other, const size_t &other_output_id)
+    void BindInput(const size_t& my_input_id, Ref<RGBNode> other, const size_t& other_output_id)
     {
         if (_RGB)
             _RGB->SetDirty();
@@ -172,7 +172,7 @@ public:
             _inputs[my_input_id].target_pin_id = other_output_id;
         }
     }
-    void BindInput(const std::string &my_input_name, Ref<RGBNode> other, const std::string &other_output_name)
+    void BindInput(const std::string& my_input_name, Ref<RGBNode> other, const std::string& other_output_name)
     {
         if (_RGB)
             _RGB->SetDirty();
@@ -180,6 +180,15 @@ public:
         auto other_id = other->GetOutputIdByName(other_output_name);
         if (my_id != 0xffffffffffffffff && other_id != 0xffffffffffffffff)
             BindInput(my_id, other, other_id);
+    }
+
+    void BindInput(const std::string& my_input_name, Ref<RGBNode> other, const size_t& other_output_id)
+    {
+        if (_RGB)
+            _RGB->SetDirty();
+        auto my_id = GetInputIdByName(my_input_name);
+        if (my_id != 0xffffffffffffffff)
+            BindInput(my_id, other, other_output_id);
     }
 
     virtual size_t GetType() = 0;
@@ -199,14 +208,16 @@ public:
         _dirty = false;
     }
 
-    virtual void Update() {}
+    virtual void Update()
+    {
+    }
 
 protected:
     mutable bool _dirty = true;
     std::vector<Pin> _inputs;
     std::vector<Pin> _outputs;
     std::unordered_map<std::string, Data> _props;
-    RenderGraphBuilder *_RGB = nullptr;
+    RenderGraphBuilder* _RGB = nullptr;
     std::string _name;
 };
 
@@ -260,18 +271,19 @@ inline Ref<RenderGraphBuilder> RenderGraphBuilder::MakeFromTarget(Ref<Texture> t
     return builder;
 }
 
+class World;
+class Camera;
+
 class RGBWorldRender : public RGBNode
 {
 public:
     INIT_RGB_NODE(RGBWorldRender)
 
-    static Ref<RGBWorldRender> Make(Ref<World> world, Ref<Camera> camera, int width, int height)
+    static Ref<RGBWorldRender> Make(Ref<World> world, Ref<Camera> camera)
     {
         auto ret = MakeRef<RGBWorldRender>();
         ret->_world = world;
         ret->_camera = camera;
-        ret->_width = width;
-        ret->_height = height;
         ret->_outputs.resize(1);
         ret->_outputs[0].name = "Color";
         ret->_outputs[0].type = PinTextureRGBA;
@@ -280,41 +292,107 @@ public:
 
     Ref<World> _world;
     Ref<Camera> _camera;
-    int _width;
-    int _height;
 
     size_t oldhash = 0;
-    
-    virtual void Update() 
+
+    virtual void Update();
+};
+
+class Widget;
+
+class RGBWidgetRender : public RGBNode
+{
+public:
+    INIT_RGB_NODE(RGBWidgetRender)
+
+    static Ref<RGBWidgetRender> Make(Ref<Widget> widget)
     {
-        const auto& objs = _world->GetObjects();
-        size_t hash = 0;
-        for (auto obj : objs)
-        {
-            hash = ((hash << 31) | (hash >> 33)) ^ ((size_t)obj.get());
-            for (auto child : obj->GetAllChildren()) 
-            {
-                hash = ((hash << 31) | (hash >> 33)) ^ ((size_t)child.get());
-            }
-            for (auto comp : obj->GetAllComponents()) 
-            {
-                hash = ((hash << 31) | (hash >> 33)) ^ ((size_t)comp.get());
-            }
-        }
-        if(oldhash != hash)
+        auto ret = MakeRef<RGBWidgetRender>();
+        ret->_widget = widget;
+        ret->_outputs.resize(1);
+        ret->_outputs[0].name = "Color";
+        ret->_outputs[0].type = PinTextureRGBA;
+        return ret;
+    }
+
+    Ref<Widget> _widget;
+
+    mutable size_t _oldHash = 0;
+
+    virtual void Update() override
+    {
+        if (!_widget)
+            return;
+        size_t hash = reinterpret_cast<size_t>(_widget.get());
+        if (_oldHash != hash)
             SetDirty();
-        oldhash = hash;
+        _oldHash = hash;
     }
 };
 
-class RGBImageNode : public RGBNode {
+class RGBMultipassNode : public RGBNode
+{
+public:
+    INIT_RGB_NODE(RGBMultipassNode)
+
+    static Ref<RGBMultipassNode> Make()
+    {
+        auto ret = MakeRef<RGBMultipassNode>();
+        ret->_outputs.resize(1);
+        ret->_outputs[0].name = "Color";
+        ret->_outputs[0].type = PinTextureRGBA;
+        return ret;
+    }
+
+    size_t AddInput(const std::string& name, PinType type = PinTextureRGBA)
+    {
+        Pin p;
+        p.name = name;
+        p.type = type;
+        _inputs.push_back(p);
+        SetDirty();
+        return _inputs.size() - 1;
+    }
+};
+
+class DisplayText;
+
+class RGBTextRender : public RGBNode
+{
+public:
+    INIT_RGB_NODE(RGBTextRender)
+
+    static Ref<RGBTextRender> Make(Ref<DisplayText> text)
+    {
+        auto ret = MakeRef<RGBTextRender>();
+        ret->_text = std::move(text);
+        ret->_outputs.resize(1);
+        ret->_outputs[0].name = "Color";
+        ret->_outputs[0].type = PinTextureRGBA;
+        return ret;
+    }
+
+    Ref<DisplayText> _text;
+
+    virtual void Update() override
+    {
+        size_t h = reinterpret_cast<size_t>(_text.get());
+        if (_oldHash != h)
+            SetDirty();
+        _oldHash = h;
+    }
+    size_t _oldHash = 0;
+};
+
+class RGBImageNode : public RGBNode
+{
 public:
     INIT_RGB_NODE(RGBImageNode)
 
-    static Ref<RGBImageNode> Make(Ref<Image> image) {
+    static Ref<RGBImageNode> Make(Ref<Image> image)
+    {
         auto ret = MakeRef<RGBImageNode>();
         ret->_image = image;
-        // один выход — текстура
         ret->_outputs.resize(1);
         ret->_outputs[0].name = "Color";
         ret->_outputs[0].type = PinTextureRGBA;

@@ -1,11 +1,12 @@
 #pragma once
 #include "../core/core.h"
 
-struct Map;
+class Map;
 
-struct Material
+class Material
 {
+public:
     std::string name = "";
     std::string type = "";
-    std::unordered_map<std::string, Ref<Map>> _maps;
+    std::unordered_map<std::string, Ref<Map>> maps;
 };

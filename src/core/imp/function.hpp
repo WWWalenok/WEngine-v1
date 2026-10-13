@@ -2,7 +2,7 @@
 
 #include <type_traits>
 template<typename... _Signature>
-struct srv_function;
+class srv_function;
 
 constexpr static size_t srv_function_GETID(const void* v, int size = 0)
 {
@@ -33,8 +33,9 @@ constexpr static size_t srv_function_GETID(const void* v, int size = 0)
 }
 
 template<typename Ret, typename... Vars> 
-struct srv_function<Ret(Vars...)>
+class srv_function<Ret(Vars...)>
 {
+public:
     template<typename T, typename... ARGS>
     struct Callable{
         virtual size_t gid() = 0;

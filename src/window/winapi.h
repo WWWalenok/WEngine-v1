@@ -24,11 +24,12 @@
 // ============================================================================
 //  Клавиатура
 // ============================================================================
-struct WINAPIKeyboard : public IKeyboard
+class WINAPIKeyboard : public IKeyboard
 {
-    std::array<bool, (size_t)KeyCode::Count> down{};
-    std::array<bool, (size_t)KeyCode::Count> pressed{};
-    std::array<bool, (size_t)KeyCode::Count> released{};
+public:
+    std::array<uint8_t, (size_t)KeyCode::Count> down{};
+    std::array<uint8_t, (size_t)KeyCode::Count> pressed{};
+    std::array<uint8_t, (size_t)KeyCode::Count> released{};
 
     bool IsKeyDown(KeyCode k) const override;
     bool IsKeyUp(KeyCode k) const override;
@@ -46,11 +47,12 @@ struct WINAPIKeyboard : public IKeyboard
 // ============================================================================
 //  Мышь
 // ============================================================================
-struct WINAPIMouse : public IMouse
+class WINAPIMouse : public IMouse
 {
-    std::array<bool, (size_t)MouseButton::Count> down{};
-    std::array<bool, (size_t)MouseButton::Count> pressed{};
-    std::array<bool, (size_t)MouseButton::Count> released{};
+public:
+    std::array<uint8_t, (size_t)MouseButton::Count> down{};
+    std::array<uint8_t, (size_t)MouseButton::Count> pressed{};
+    std::array<uint8_t, (size_t)MouseButton::Count> released{};
 
     int posX = 0, posY = 0;
     int frameDeltaX = 0, frameDeltaY = 0;
@@ -87,14 +89,15 @@ struct WINAPIMouse : public IMouse
 // ============================================================================
 //  Геймпад
 // ============================================================================
-struct WINAPIGamepad : public IGamepad
+class WINAPIGamepad : public IGamepad
 {
+public:
     int slot = 0;
     bool connected = false;
 
-    std::array<bool,  (size_t)GamepadButton::Count> down{};
-    std::array<bool,  (size_t)GamepadButton::Count> pressed{};
-    std::array<bool,  (size_t)GamepadButton::Count> released{};
+    std::array<uint8_t,  (size_t)GamepadButton::Count> down{};
+    std::array<uint8_t,  (size_t)GamepadButton::Count> pressed{};
+    std::array<uint8_t,  (size_t)GamepadButton::Count> released{};
     std::array<float, (size_t)GamepadAxis::Count>   axes{};
 
     int  GetSlot() const override;
@@ -111,8 +114,9 @@ struct WINAPIGamepad : public IGamepad
 // ============================================================================
 //  Input Helper
 // ============================================================================
-struct WINAPIInputHelper : public IInputHelper
+class WINAPIInputHelper : public IInputHelper
 {
+public:
     static WINAPIInputHelper& Get();
 
     bool inited = false;
@@ -135,8 +139,9 @@ struct WINAPIInputHelper : public IInputHelper
 // ============================================================================
 //  Input Bridge
 // ============================================================================
-struct WINAPIInputBridge : public IInputBridge
+class WINAPIInputBridge : public IInputBridge
 {
+public:
     static WINAPIInputBridge& Get();
 
     int  Prepare() override;
@@ -151,8 +156,9 @@ void WinAPIInputDispatchMessage(HWND hWnd, UINT uMsg, WPARAM wParam, LPARAM lPar
 // ============================================================================
 //  Window
 // ============================================================================
-struct WINAPIWindow : public IWindow
+class WINAPIWindow : public IWindow
 {
+public:
     HDC  hDC  = nullptr;
     HWND hWnd = nullptr;
 
@@ -188,8 +194,9 @@ struct WINAPIWindow : public IWindow
 // ============================================================================
 //  Window Helper
 // ============================================================================
-struct WINAPIWindowHelper : public IWindowHelper
+class WINAPIWindowHelper : public IWindowHelper
 {
+public:
     static WINAPIWindowHelper& Get();
 
     std::mutex winmutex;

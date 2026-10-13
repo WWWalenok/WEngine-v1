@@ -284,7 +284,7 @@ private:
 // ---------------------------------------------------------------------------
 // Конвертеры PixelFormat -> OpenGL
 // ---------------------------------------------------------------------------
-GLenum PixelFormat2GLFormat(const PixelFormat &m)
+static GLenum PixelFormat2GLFormat(const PixelFormat &m)
 {
     switch (m)
     {
@@ -317,7 +317,7 @@ GLenum PixelFormat2GLFormat(const PixelFormat &m)
     }
 }
 
-GLenum PixelFormat2GLInternal(const PixelFormat &m)
+static GLenum PixelFormat2GLInternal(const PixelFormat &m)
 {
     switch (m)
     {
@@ -358,7 +358,7 @@ GLenum PixelFormat2GLInternal(const PixelFormat &m)
     }
 }
 
-GLenum PixelFormat2GLType(const PixelFormat &m)
+static GLenum PixelFormat2GLType(const PixelFormat &m)
 {
     switch (m)
     {

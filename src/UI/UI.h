@@ -1,9 +1,7 @@
 #pragma once
 
-struct UI
-{
-    UI()
-    {
-        
-    }
-};
+#include "Widget.h"
+#include "Button.h"
+#include "CanvasWidget.h"
+#include "FillBar.h"
+#include "GroupBox.h"

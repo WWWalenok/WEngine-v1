@@ -182,6 +182,86 @@ void main() {
 )GLSL");
 
 } // namespace TestShader
+
+namespace WidgetBlit
+{
+REG_SHADER_VS(WidgetBlit, 430, R"GLSL(
+layout(location = 0) in vec2 aPos; // unit quad в NDC [-1..1]
+
+out vec2 TexCoord;
+
+uniform vec2 u_targetSize; // размер цели рендера (W, H) в пикселях
+uniform vec4 u_rect;       // x, y, w, h в пикселях, origin — левый верх
+
+void main()
+{
+    vec2 t = vec2(aPos.x * 0.5 + 0.5,
+                  0.5 - aPos.y * 0.5);
+
+    vec2 px = u_rect.xy + t * u_rect.zw;
+
+    vec2 ndc = vec2( px.x / u_targetSize.x * 2.0 - 1.0,
+                     1.0 - px.y / u_targetSize.y * 2.0 );
+
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    // gl_Position = aPos;
+
+    TexCoord = t;
+}
+)GLSL");
+
+REG_SHADER_FS(WidgetBlit, 430, R"GLSL(
+in vec2 TexCoord;
+out vec4 FragColor;
+uniform sampler2D screenTexture;
+void main()
+{
+    FragColor = texture(screenTexture, TexCoord);
+}
+)GLSL");
+} // namespace WidgetBlit
+
+namespace TextInstanced
+{
+REG_SHADER_VS(TextInstanced, 430, R"GLSL(
+layout(location = 0) in vec2 aPos;    // unit quad [0..1]
+layout(location = 1) in vec2 iPos;    // instance: top-left px
+layout(location = 2) in vec2 iSize;   // instance: size px
+layout(location = 3) in vec4 iUV;     // instance: u0,v0,u1,v1
+layout(location = 4) in vec4 iColor;  // instance: rgba
+
+uniform vec2 u_targetSize;
+
+out vec2 vUV;
+out vec4 vColor;
+
+void main()
+{
+    vec2 px  = iPos + aPos * iSize;
+    vec2 ndc = vec2(px.x / u_targetSize.x * 2.0 - 1.0,
+                    1.0 - px.y / u_targetSize.y * 2.0);
+    gl_Position = vec4(ndc, 0.0, 1.0);
+    vUV    = mix(iUV.xy, iUV.zw, aPos);
+    vColor = iColor;
+}
+)GLSL");
+
+REG_SHADER_FS(TextInstanced, 430, R"GLSL(
+in vec2 vUV;
+in vec4 vColor;
+out vec4 FragColor;
+uniform sampler2D u_atlas;
+
+void main()
+{
+    // Временно для теста геометрии:
+    // FragColor = vec4(1.0, 1.0, 1.0, 1.0);
+
+    float a = texture(u_atlas, vUV).r;
+    FragColor = vec4(vColor.rgb, vColor.a * a);
+}
+)GLSL");
+} // namespace TextInstanced
 } // namespace ShaderLib
 
 #endif

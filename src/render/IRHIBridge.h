@@ -7,12 +7,13 @@
 
 class RenderGraphBuilder;
 
-struct IRHIBridge : public IWindow::EventHandler
+class IRHIBridge : public IWindow::EventHandler
 {
+public:
     virtual int Prepare() = 0;
     virtual int Finish() = 0;
 };
 
-IRHIBridge* GetIRHIBridge();
+extern IRHIBridge* GetIRHIBridge();
 
 #endif // __IRHIBRIDGE_H__

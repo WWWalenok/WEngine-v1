@@ -16,7 +16,23 @@
 namespace data_core
 {
 
-constexpr size_t GETID(const char* name)
+constexpr static size_t GETID(const void* v, size_t size = 0)
+{
+    size_t hash = 0x811c9dc5;
+    size_t h1   = 0x959954B9;
+    const char* name =  (const char*)(v);
+    while (size)
+    {
+        h1 = *name + (h1 << 5) + (h1 << 7) + (h1 << 17) - h1;
+        hash ^= (unsigned char)*name++;
+        hash *= 0x01000193;
+        --size;
+    }
+
+    return ((hash & 0xffffffff) | (h1 << 32)) | 0x1ULL;
+}
+
+constexpr static size_t GETID(const char* name)
 {
     size_t hash = 0x811c9dc5;
     size_t h1   = 0x959954B9;
@@ -225,37 +241,36 @@ struct RawData
 
     RawData* inc()
     {
-        ++s_counter;
+        s_counter.fetch_add(1);
         return this;
     }
     
     bool dec()
     {
-        return (--s_counter) == 0;
+        return (s_counter.fetch_sub(1)) == 1;
     }
 
     RawData* winc()
     {
-        ++w_counter;
+        w_counter.fetch_add(1);
         return this;
     }
     
     bool wdec()
     {
-        return (--w_counter) == 0;
+        return (w_counter.fetch_sub(1)) == 1;
     }
 
-    typedef void type;
     RawData(size_t type, const char* name) : dataType(type), name(name) 
     {
         s_counter = 0;
         w_counter = 0;
-        // printf("--> create   0x%llX\n", (size_t)this);
+        PWLD("--> create   0x%llX, 0x%llX, %s\n", (size_t)this, dataType, name);
     }
 
     virtual ~RawData() 
     {
-        // printf("--> ~destroy 0x%llX\n", (size_t)this);
+        PWLD("--> ~destroy 0x%llX, 0x%llX, %s\n", (size_t)this, dataType, name);
     };
     
     template<typename T>
@@ -265,6 +280,15 @@ struct RawData
             return (T*)ptr();
         return nullptr;
     }
+    
+    template<typename T>
+    const T* as() const
+    {
+        if (dataType == Helper<T>::ID())
+            return (T*)ptr();
+        return nullptr;
+    }
+    
     virtual void* ptr() = 0;
     virtual const void* ptr() const  = 0;
     virtual void free() = 0;
@@ -459,7 +483,7 @@ struct _smart_pointer
         {
             if (counter->dec())
             {
-                // printf("--> delete   0x%llX->0x%llX\n", (size_t)counter, (size_t)counter->ptr());
+                // PWLD("--> delete   0x%llX->0x%llX\n", (size_t)counter, (size_t)counter->ptr());
                 if (counter && counter->bind)
                 {
                     if (deallocator)
@@ -475,6 +499,7 @@ struct _smart_pointer
                 
                 if (counter->w_counter.load() == 0)
                 {
+                    // PWLD("--> delete counter 0x%llX\n", (size_t)counter);
                     delete counter;
                 }
             }
@@ -535,16 +560,17 @@ struct _smart_pointer
 
     _smart_pointer& operator=(const _smart_pointer<false>& other)
     {
-        if ((void*)this != &other)
+        if (other.counter != counter)
         {
-            dec_impl();
             if (other.counter)
             {
                 if constexpr (weak)
-                    counter = other.counter->winc();
+                    other.counter->winc();
                 else
-                    counter = other.counter->inc();
+                    other.counter->inc();
             }
+            dec_impl();
+            counter = other.counter;
             deallocator = other.deallocator;
         }
         return *this;
@@ -552,18 +578,25 @@ struct _smart_pointer
 
     _smart_pointer& operator=(const _smart_pointer<true>& other)
     {
-        if ((void*)this != &other)
+        if (other.counter != counter)
         {
-            dec_impl();
             if (other.counter)
             {
                 if constexpr (weak)
-                    counter = other.counter->winc();
+                    other.counter->winc();
                 else
-                    counter = other.counter->inc();
+                    other.counter->inc();
             }
+            dec_impl();
+            counter = other.counter;
             deallocator = other.deallocator;
         }
+        return *this;
+    }
+
+    _smart_pointer& operator=(nullptr_t)
+    {
+        dec_impl();
         return *this;
     }
 
@@ -714,22 +747,13 @@ struct Pointer : public BasePointer
         this->__setDeallocator(DEALLOCATOR());
     }
 
-    __declspec(noinline) T* __get() { return (T*)__ptr(); }
-    __declspec(noinline) const T* __get() const { return (T*)__ptr(); }
+    __declspec(noinline) T* __get() const { return (T*)__ptr(); }
 
-    operator const T*() const { 
+    operator T*() const { 
         return __get(); 
     }
 
-    operator T*() { 
-        return __get();
-    }
-
-    T* get() { 
-        return __get();
-    }
-
-    const T* get() const { 
+    T* get() const { 
         return __get();
     }
 
@@ -740,11 +764,7 @@ struct Pointer : public BasePointer
         return ret;
     }
 
-    T* operator->() { 
-        return ((T*)__ptr()); 
-    }
-
-    const T* operator->() const { 
+    T* operator->() const { 
         return ((T*)__ptr()); 
     }
 

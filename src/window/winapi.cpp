@@ -61,10 +61,10 @@ static KeyCode VKToKeyCode(WPARAM vk)
 // ============================================================================
 //  WINAPIKeyboard
 // ============================================================================
-bool WINAPIKeyboard::IsKeyDown(KeyCode k) const     { return down[(size_t)k]; }
-bool WINAPIKeyboard::IsKeyUp(KeyCode k) const       { return !down[(size_t)k]; }
-bool WINAPIKeyboard::IsKeyPressed(KeyCode k) const  { return pressed[(size_t)k]; }
-bool WINAPIKeyboard::IsKeyReleased(KeyCode k) const { return released[(size_t)k]; }
+bool WINAPIKeyboard::IsKeyDown(KeyCode k) const     { return down[(size_t)k] != 0; }
+bool WINAPIKeyboard::IsKeyUp(KeyCode k) const       { return !down[(size_t)k] != 0; }
+bool WINAPIKeyboard::IsKeyPressed(KeyCode k) const  { return pressed[(size_t)k] != 0; }
+bool WINAPIKeyboard::IsKeyReleased(KeyCode k) const { return released[(size_t)k] != 0; }
 
 void WINAPIKeyboard::Update() {}
 
@@ -106,9 +106,9 @@ void WINAPIKeyboard::OnKeyUp(WPARAM vk)
 // ============================================================================
 //  WINAPIMouse
 // ============================================================================
-bool WINAPIMouse::IsButtonDown(MouseButton b) const     { return down[(size_t)b]; }
-bool WINAPIMouse::IsButtonPressed(MouseButton b) const  { return pressed[(size_t)b]; }
-bool WINAPIMouse::IsButtonReleased(MouseButton b) const { return released[(size_t)b]; }
+bool WINAPIMouse::IsButtonDown(MouseButton b) const     { return down[(size_t)b] != 0; }
+bool WINAPIMouse::IsButtonPressed(MouseButton b) const  { return pressed[(size_t)b] != 0; }
+bool WINAPIMouse::IsButtonReleased(MouseButton b) const { return released[(size_t)b] != 0; }
 
 void WINAPIMouse::GetPosition(int& x, int& y) const { x = posX; y = posY; }
 void WINAPIMouse::GetDelta(int& dx, int& dy)  const { dx = frameDeltaX; dy = frameDeltaY; }

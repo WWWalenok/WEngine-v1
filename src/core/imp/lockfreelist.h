@@ -14,11 +14,12 @@ template<typename T>
 // typedef int T;
 class LockFreeList
 {
-    static std::atomic<size_t>& ListItemBaseCounter(){ static std::atomic<size_t> _; return _; }
     struct ListItemBase : public SpinLocker
     {
     private:
-        unsigned int magic = 0x4C464C49;
+        constexpr static unsigned int base_magic = 0x4C464C49;
+        unsigned int magic = base_magic;
+        size_t rem_ts = 0;
         friend class LockFreeList;
         std::atomic_bool need_delete = false;
         std::atomic_bool need_remove = false;
@@ -55,7 +56,6 @@ class LockFreeList
     public:
         ListItemBase() : SpinLocker(), m_next(nullptr), m_next_del(nullptr)
         {
-            ListItemBaseCounter()++;
         }
 
         bool ReadyRemove()
@@ -70,30 +70,37 @@ class LockFreeList
 
         bool Deleted()
         {
-            if (magic != 0x4C464C49)
+            if (magic != base_magic)
                 return true;
             return need_delete.load();
         }
 
         bool Valid()
         {
-            return magic == 0x4C464C49 && !ready_remove.load() && !need_delete.load();
+            return magic == base_magic && !ready_remove.load() && !need_delete.load();
         }
 
         ~ListItemBase()
         {
-            ListItemBaseCounter()--;
-            if (magic != 0x4C464C49)
-                printf("wtf\n");
         }
     };
 
     bool __get_next_and_lock__(ListItemBase* cur, ListItemBase*& next)
     {
+        if(cur->Deleted())
+        {
+            next = nullptr;
+            return false;
+        }
         cur->used.fetch_add(1);
         next = cur->m_next.load();
         while(next)
         {
+            if(next->Deleted())
+            {
+                next = nullptr;
+                return false;
+            }
             next->used.fetch_add(1);
             if(next->try_lock())
             {
@@ -322,7 +329,6 @@ public:
 
     bool Clear()
     {
-        auto& Counter = ListItemBaseCounter();
         m_root.lock();
         m_delete_root.lock();
         ListItemBase* cur = m_root.m_next;
@@ -366,17 +372,25 @@ public:
                 m_delete_root.unlock();
                 return;
             }
-            ListItem* m_to_free_list = (ListItem*)m_delete_root.m_next.load();
+            ListItemBase* m_to_free_list = (ListItemBase*)m_delete_root.m_next.load();
+            size_t ts = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
             if (m_to_free_list && m_to_free_list->used.load() == 0 && m_to_free_list->Deleted() && m_to_free_list->try_lock())
             {
+                if(m_to_free_list->rem_ts + 5000 > ts)
+                {
+                    m_to_free_list->unlock();
+                    m_delete_root.unlock();
+                    return;
+                }
                 m_delete_root.m_next.store(m_to_free_list->m_next_del);
                 --m_to_free_list_size;
                 m_to_free_list->m_next.store(nullptr);
                 m_to_free_list->m_next_del.store(nullptr);
 
                 m_to_free_list->unlock();
-                delete m_to_free_list;
-                m_to_free_list = (ListItem*)m_delete_root.m_next.load();
+                memset(m_to_free_list, 0, sizeof(int));
+                delete (ListItem*)m_to_free_list;
+                m_to_free_list = (ListItemBase*)m_delete_root.m_next.load();
                 if(m_to_free_list == nullptr)
                     m_delete_root.m_next_del.store(nullptr);
                 m_delete_root.unlock();
@@ -422,6 +436,7 @@ public:
                 }
                 m_delete_root.m_next_del.store(s);
 
+                s->rem_ts = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::high_resolution_clock::now().time_since_epoch()).count();
                 s->unlock();
             }
             else

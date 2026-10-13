@@ -8,8 +8,8 @@ class GameSystem : public ISystem
 {
     DECLARE_SYSTEM(GameSystem);
     GameSystem() :
-        mainThread(1),
-        pool(32)
+        mainThread(1, "GameSystem mainThread"),
+        pool(32, "GameSystem pool")
     {
         mainThread.send_delayed_repetable({1, 100}, this, &GameSystem::Update);
     }
@@ -39,6 +39,10 @@ class GameSystem : public ISystem
     std::unordered_map<std::string, Ref<World>> worlds;
 
     std::unordered_set<Ref<World>> activeWorlds;
+
+    ~GameSystem(){
+        mainThread.Stop();
+    }
 public:
 
     ThreadPool& Pool() { return pool; };

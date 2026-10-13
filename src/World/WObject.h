@@ -2,7 +2,7 @@
 #include "../core/core.h"
 #include <unordered_map>
 
-struct World;
+class World;
 class WObject;
 class WComponent;
 class WActor;

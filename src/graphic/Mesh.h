@@ -4,8 +4,9 @@
 #include <string>
 #include "Material.h"
 
-struct Mesh : public CoreObject 
+class Mesh : public CoreObject 
 {
+public:
     struct Vertex
     {
         MVector3f v;
@@ -18,7 +19,6 @@ struct Mesh : public CoreObject
 
     std::string name;
 
-    Ref<Material> material = nullptr;
     Ref<IRHIMesh> rhimesh  = nullptr;
 
     void Update() {
@@ -29,8 +29,9 @@ struct Mesh : public CoreObject
     }
 };
 
-struct Skeleton
+class Skeleton
 {
+public:
 
     struct Bone
     {
@@ -53,8 +54,9 @@ struct Skeleton
 };
 
 
-struct SkeletalMesh
+class SkeletalMesh
 {
+public:
     struct Vertex
     {
         MVector3f         v;

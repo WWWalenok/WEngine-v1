@@ -3,19 +3,16 @@
 
 #include "../core/core.h"
 
-class IRHIHelper;
-IRHIHelper *GetIRHIHelper();
 
 // Предварительные объявления
-struct World;
-struct Camera;
-struct UI;
-struct Skeleton;
-struct Mesh;
-struct SkeletalMesh;
-struct ProceduralTexture;
-struct Texture;
-struct IWindow;
+class World;
+class Camera;
+class Skeleton;
+class Mesh;
+class SkeletalMesh;
+class ProceduralTexture;
+class Texture;
+class IWindow;
 class RenderGraphBuilder;
 
 enum PixelFormat : uint8_t
@@ -161,6 +158,9 @@ public:
 
 #define FABRIC_IMP(X, Y) virtual Ref<IRHI##Y> Gen##X() = 0;
 #define FABRIC(X) FABRIC_IMP(X, X)
+
+class IRHIHelper;
+extern IRHIHelper *GetIRHIHelper();
 
 class RenderGraphBuilder;
 class IRHIHelper

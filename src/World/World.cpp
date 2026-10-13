@@ -51,8 +51,14 @@ std::vector<Ref<WObject>> World::FindObjectsByTag(std::string tag) {
 void World::Update(float delta_time) {
     WL_START_TYMETRACE;
     accumulated_delta_time += delta_time;
+    auto gs = GameSystem::Get();
     if (pool_status.load() != 0)
-        return;
+    {
+        if(!gs->Pool().IsEmpty())
+        {
+            return;
+        }
+    }
     pool_status.store(pool_count);
     
     new_root_objects_lock.lock();
@@ -91,19 +97,23 @@ void World::Update(float delta_time) {
             }
         }
     }
-    auto gs = GameSystem::Get();
     for (uint16_t i = 0; i < pool_count; ++i)
     {
-        if(pools[i].size() > 0)
-        {
-            gs->Pool().send([delta_time = accumulated_delta_time, pool = &pools[i], Self = GetSelfRef(this)] () mutable {
-                WL_START_TYMETRACE;
-                for (auto& object : (*pool)) {
-                    object->UpdateImp(delta_time);
-                }
-                Self->pool_status.fetch_sub(1);
-            });
-        }
+        gs->Pool().send([delta_time = accumulated_delta_time, pool = &pools[i], Self = GetSelfRef(this)] () mutable {
+            WL_START_TYMETRACE;
+            
+            struct _guard_ {
+                Ref<World> Self;
+                _guard_(Ref<World> Self): Self(Self) {}
+                ~_guard_() {
+                    Self->pool_status.fetch_sub(1, std::memory_order_acquire);
+                };
+            };
+            _guard_ _(Self);
+            for (auto& object : (*pool)) {
+                object->UpdateImp(delta_time);
+            }
+        });
     }
     accumulated_delta_time = 0;
 }

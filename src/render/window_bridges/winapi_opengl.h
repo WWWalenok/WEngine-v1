@@ -11,7 +11,8 @@
 #include <windows.h>
 #include <stdio.h>
 
-struct WinapiOpenglBridge : public IRHIBridge {
+class WinapiOpenglBridge : public IRHIBridge {
+public:
     struct WinapiOpenglBridgeWindowExt {
         HGLRC hRC;
     };
@@ -64,7 +65,6 @@ struct WinapiOpenglBridge : public IRHIBridge {
 
     virtual void OnDestroy(IWindow* window) override { OnClose(window); }
 
-
     virtual void OnActivate(IWindow* window) override
     {
         WL_START_TYMETRACE;
@@ -95,10 +95,5 @@ struct WinapiOpenglBridge : public IRHIBridge {
     }
     
 };
-
-static IRHIBridge* GetIRHIBridge() {
-    static WinapiOpenglBridge bridge;
-    return &bridge;
-}
 
 #endif

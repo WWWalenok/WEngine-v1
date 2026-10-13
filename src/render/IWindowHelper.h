@@ -5,8 +5,9 @@
 #include <string>
 
 
-struct IWindow
+class IWindow
 {
+public:
     struct EventHandler
     {
         virtual void OnPaint(IWindow*) {};
@@ -35,8 +36,9 @@ struct IWindow
     virtual bool Valid() const = 0;
 };
 
-struct IWindowHelper
+class IWindowHelper
 {
+public:
     virtual Ref<IWindow> MakeWindow(IWindow::EventHandler*, std::string, int = 512, int = 512) = 0;
 
     virtual IWindow** GetWindows() = 0;

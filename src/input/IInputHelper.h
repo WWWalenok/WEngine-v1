@@ -21,6 +21,7 @@ enum class KeyCode : uint16_t
     Count
 };
 
+
 enum class MouseButton : uint8_t
 {
     Left = 0, Right, Middle, X1, X2, Count
@@ -108,12 +109,6 @@ public:
     virtual bool IsButtonReleased(GamepadButton button) const = 0;
     virtual float GetAxis(GamepadAxis axis) const = 0;
 };
-
-// ---------- Точка доступа (аналог IRHIHelper) ----------
-//
-// Никаких фабрик: набор устройств фиксирован.
-// Реализация создаёт их в Init() и отдаёт через Get*.
-
 constexpr int MAX_GAMEPADS = 4;
 
 class IInputHelper

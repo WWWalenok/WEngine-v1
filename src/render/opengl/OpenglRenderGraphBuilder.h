@@ -163,9 +163,21 @@ public:
             int rgbOutputIdx;
             int rhiNodeIdx;
         };
+        struct MappedDependes
+        {
+            int rhiBaseNodeIdx;
+            int rhiDependedNodeIdx;
+        };
+        struct MappedInputDependes
+        {
+            int rgbBaseInputIdx;
+            int rgbDependedInputIdx;
+        };
         std::vector<Ref<OpenglRHINode>> nodes;
         std::vector<MappedInputPin> mappedInputs;
         std::vector<MappedOutputPin> mappedOutputs;
+        std::vector<MappedDependes> mappedDependes;
+        std::vector<MappedInputDependes> mappedInputDependes;
     };
 
     using ConverterFunc = std::function<ConvertersReturnValue(OpenglRenderGraphBuilder &, RGBNode *)>;
@@ -293,6 +305,36 @@ public:
                     }
                 }
             }
+            for (auto &mapDep : result.mappedDependes)
+            {
+                if(mapDep.rhiBaseNodeIdx != mapDep.rhiDependedNodeIdx)
+                {
+                    result.nodes[mapDep.rhiBaseNodeIdx]->AddRequirement(result.nodes[mapDep.rhiDependedNodeIdx]);
+                }
+            }
+            for (auto &mapDep : result.mappedInputDependes)
+            {
+                auto *rgbBasePin = rgbNode->GetInputById(mapDep.rgbBaseInputIdx);
+                auto srcBaseResultIt = conversionResults.find(rgbBasePin->target.get());
+                if (srcBaseResultIt == conversionResults.end())
+                    continue;
+                auto &srcBaseResult = srcBaseResultIt->second;
+
+                auto *rgbDepPin = rgbNode->GetInputById(mapDep.rgbDependedInputIdx);
+                auto srcDepResultIt = conversionResults.find(rgbDepPin->target.get());
+                if (srcDepResultIt == conversionResults.end())
+                    continue;
+                auto &srcDepResult = srcDepResultIt->second;
+                for (auto &mapBaseOut : srcBaseResult.mappedOutputs)
+                {
+                    auto baseNode = srcBaseResult.nodes[mapBaseOut.rhiNodeIdx];
+                    for (auto &mapDepOut : srcDepResult.mappedOutputs)
+                    {
+                        auto depNode = srcDepResult.nodes[mapDepOut.rhiNodeIdx];
+                        baseNode->AddRequirement(depNode);
+                    }
+                }
+            }
         }
     }
 
@@ -376,7 +418,7 @@ static OpenglRenderGraphBuilder::ConvertersReturnValue RGBWorldRender_converter_
 
     auto viewNode = MakeRef<CameraViewMatrixNode>(wr->_camera);
     ret.nodes.push_back(viewNode);
-    auto projNode = MakeRef<CameraProjectionMatrixNode>(wr->_camera, (float)wr->_width / wr->_height);
+    auto projNode = MakeRef<CameraProjectionMatrixNode>(wr->_camera, (float)1.0);
     ret.nodes.push_back(projNode);
     auto viewPosNode = MakeRef<ViewPosNode>(wr->_camera);
     ret.nodes.push_back(viewPosNode);
@@ -386,9 +428,13 @@ static OpenglRenderGraphBuilder::ConvertersReturnValue RGBWorldRender_converter_
         Ref<OpenglTextureResourceNode> diff, spec;
         std::vector<Ref<WObject>> objs;
     };
-    std::unordered_map<Mesh*, Group> groups;
+    std::unordered_map<size_t, Group> groups;
 
     std::function<void(Ref<WObject>)> traverse = [&](Ref<WObject> obj) {
+        if(!obj)
+        {
+            return;
+        }
         if (auto meshComp = RefCast<StaticMeshComponent>(obj))
         {
             Ref<Mesh> mesh = meshComp->mesh;
@@ -400,7 +446,7 @@ static OpenglRenderGraphBuilder::ConvertersReturnValue RGBWorldRender_converter_
                 Ref<OpenglTextureResourceNode> diffNode, specNode;
                 if (auto mat = meshComp->material.get())
                 {
-                    auto diffMap = mat->_maps.count("diffuse") ? mat->_maps["diffuse"] : nullptr;
+                    auto diffMap = mat->maps.count("diffuse") ? mat->maps["diffuse"] : nullptr;
                     if (diffMap)
                     {
                         if (diffMap->texture)
@@ -413,7 +459,7 @@ static OpenglRenderGraphBuilder::ConvertersReturnValue RGBWorldRender_converter_
                             diffNode = builder.GetOrCreateColorTextureNode(diffMap->color);
                         }
                     }
-                    auto specMap = mat->_maps.count("specular") ? mat->_maps["specular"] : nullptr;
+                    auto specMap = mat->maps.count("specular") ? mat->maps["specular"] : nullptr;
                     if (specMap)
                     {
                         if (specMap->texture)
@@ -431,8 +477,15 @@ static OpenglRenderGraphBuilder::ConvertersReturnValue RGBWorldRender_converter_
                     diffNode = NullTextureResourceNode::Get();
                 if (!specNode)
                     specNode = NullTextureResourceNode::Get();
-
-                auto& res = groups.try_emplace(mesh.get(), Group{meshNode, diffNode, specNode, {obj}});
+                auto k1 = meshNode.get();
+                auto k2 = specNode.get();
+                auto k3 = diffNode.get();
+                auto& res = groups.try_emplace(
+                    data_core::GETID(&k1, sizeof(k1)) ^ 
+                    data_core::GETID(&k2, sizeof(k2)) ^ 
+                    data_core::GETID(&k3, sizeof(k3)), 
+                    Group{meshNode, diffNode, specNode, {obj}}
+                );
 
                 if(!res.second)
                 {
@@ -503,6 +556,48 @@ static OpenglRenderGraphBuilder::ConvertersReturnValue RGBWorldRender_converter_
 }
 REGISTER_RGB_CONVERTER_EXT(RGBWorldRender, RGBWorldRender_converter_func);
 
+static OpenglRenderGraphBuilder::ConvertersReturnValue
+RGBWidgetRender_converter_func(OpenglRenderGraphBuilder&, RGBNode* node)
+{
+    auto* wr = static_cast<RGBWidgetRender*>(node);
+    if (!wr || !wr->_widget)
+        return {};
+
+    auto rhiNode = MakeRef<OpenglWidgetRenderNode>(wr->_widget);
+
+    OpenglRenderGraphBuilder::ConvertersReturnValue ret;
+    ret.nodes = { rhiNode };
+    ret.mappedOutputs.push_back({ 0, 0 });
+    return ret;
+}
+REGISTER_RGB_CONVERTER_EXT(RGBWidgetRender, RGBWidgetRender_converter_func);
+
+static OpenglRenderGraphBuilder::ConvertersReturnValue
+RGBMultipassNode_converter_func(OpenglRenderGraphBuilder&, RGBNode* node)
+{
+    auto* mp = static_cast<RGBMultipassNode*>(node);
+    if (!mp)
+        return {};
+    auto inputs = mp->GetInputs();
+    auto rhiNode = MakeRef<OpenglMultipassNode>(inputs.size());
+
+    OpenglRenderGraphBuilder::ConvertersReturnValue ret;
+    ret.nodes = { rhiNode };
+
+    for (size_t i = 0; i < inputs.size(); ++i)
+    {
+        ret.mappedInputs.push_back({ (int)i, 0, (int)i });
+        if(i > 0)
+        {
+            ret.mappedInputDependes.push_back({int(i), int(i - 1)});
+        }
+    }
+
+    ret.mappedOutputs.push_back({ 0, 0 });
+    return ret;
+}
+REGISTER_RGB_CONVERTER_EXT(RGBMultipassNode, RGBMultipassNode_converter_func);
+
 REGISTER_RGB_CONVERTER(RGBImageNode, {
     auto *imgNode = static_cast<RGBImageNode *>(node);
     if (!imgNode || !imgNode->_image)
@@ -514,5 +609,21 @@ REGISTER_RGB_CONVERTER(RGBImageNode, {
     ret.mappedOutputs.push_back({0, 0});
     return ret;
 });
+
+static OpenglRenderGraphBuilder::ConvertersReturnValue
+RGBTextRender_converter_func(OpenglRenderGraphBuilder&, RGBNode* node)
+{
+    auto* tr = static_cast<RGBTextRender*>(node);
+    if (!tr || !tr->_text)
+        return {};
+
+    auto rhiNode = MakeRef<OpenglTextRenderNode>(tr->_text);
+
+    OpenglRenderGraphBuilder::ConvertersReturnValue ret;
+    ret.nodes = { rhiNode };
+    ret.mappedOutputs.push_back({ 0, 0 });
+    return ret;
+}
+REGISTER_RGB_CONVERTER_EXT(RGBTextRender, RGBTextRender_converter_func);
 
 #endif

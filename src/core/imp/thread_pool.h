@@ -9,6 +9,9 @@
 static std::atomic<size_t> tot_ref_count{1};
 static std::atomic<size_t> tot_ref_count_mes{1};
 static std::atomic<size_t> tot_ref_count_rsp{1};
+
+void SetThisThreadName(std::thread* thread, const char* threadName);
+
 class ThreadPool
 {
     unsigned char THCOUNT = 1;
@@ -367,6 +370,7 @@ class ThreadPool
         }
     };
 
+    std::string name = "thread_pool";
     std::vector<std::thread> pool;
     std::atomic_bool run{true};
     std::atomic_int run_thread_count{0};
@@ -431,9 +435,19 @@ public:
         return false;
     }
 
+    bool IsEmpty()
+    {
+        for (int i = 0; i < sizeof(buffers) / sizeof(buffers[0]); i++)
+        {
+            if(buffers[0].Size() > 0)
+                return false;
+        }
+        return true;
+    }
 private:
     static void ThreadPoolThread(ThreadPool* self, int id)
     {
+        SetThisThreadName(&self->pool[id], (self->name + std::string(": ") + std::to_string(id)).c_str());
         self->run_thread_count++;
         if (id == 0)
         {
@@ -471,13 +485,54 @@ private:
     }
 
 public:
-    ThreadPool(unsigned char count = 16, bool greedy = true) : THCOUNT(count), greedy(greedy)
+    ThreadPool(unsigned char count = 16, std::string name = "thread_pool", bool greedy = false) : THCOUNT(count), name(name), greedy(greedy)
     {
         pool.resize(THCOUNT);
         for (int i = 0; i < THCOUNT; i++)
         {
             pool[i] = std::thread(ThreadPoolThread, this, i);
             pool[i].detach();
+        }
+    }
+
+    void Start()
+    {
+        if(run.load())
+        {
+            return;
+        }
+        run.store(true);
+        pool.resize(THCOUNT);
+        for (int i = 0; i < THCOUNT; i++)
+        {
+            pool[i] = std::thread(ThreadPoolThread, this, i);
+            pool[i].detach();
+        }
+    }
+
+    void Stop()
+    {
+        if(!run.load())
+        {
+            return;
+        }
+        run.store(false);
+        bool wait = true;
+        while (wait)
+        {
+            wait = (run_thread_count.load() > 0);
+            for (int i = 0; i < THCOUNT; i++)
+            {
+                if (pool[i].joinable())
+                {
+                    pool[i].join();
+                    wait = true;
+                }
+            }
+            if (wait)
+            {
+                std::this_thread::sleep_for(std::chrono::milliseconds(1));
+            }
         }
     }
 
@@ -1155,23 +1210,6 @@ public:
 
     ~ThreadPool()
     {
-        run.store(false);
-        bool wait = true;
-        while (wait)
-        {
-            wait = (run_thread_count.load() > 0);
-            for (int i = 0; i < THCOUNT; i++)
-            {
-                if (pool[i].joinable())
-                {
-                    pool[i].join();
-                    wait = true;
-                }
-            }
-            if (wait)
-            {
-                std::this_thread::sleep_for(std::chrono::milliseconds(1));
-            }
-        }
+        Stop();
     }
 };

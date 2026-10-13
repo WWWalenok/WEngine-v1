@@ -7,13 +7,13 @@
 #include "IRHIHelper.h"
 #include "RenderGraphBuilder.h"
 
-struct World;
-struct UI;
-struct Camera;
+class World;
+class UI;
+class Camera;
 
 class RenderSystem : public ISystem {
     DECLARE_SYSTEM(RenderSystem);
-    RenderSystem() : thread(0, true) {
+    RenderSystem() : thread(0, "RenderSystem", true) {
         rhi = GetIRHIHelper();
         wh = GetIWindowsHelper();
         bridge = GetIRHIBridge();
@@ -64,9 +64,18 @@ public:
                 auto winOut = static_cast<RGBWindowOutputNode*>(root);
                 if(!winOut->windowTarget->Valid())
                     continue;
+                int w;
+                int h;
+                winOut->windowTarget->GetSize(w, h);
+                if(w * h == 0)
+                    continue;
                 winOut->windowTarget->Activate();
+                graph->Execute();
             }
-            graph->Execute();
+            else
+            {
+                graph->Execute();
+            }
             is_any_processed = true;
         }
 

@@ -3,8 +3,9 @@
 
 #include "IInputHelper.h"
 
-struct IInputBridge
+class IInputBridge
 {
+public:
     virtual ~IInputBridge() = default;
 
     virtual int  Prepare() = 0;

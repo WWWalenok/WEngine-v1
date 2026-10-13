@@ -20,14 +20,14 @@ struct MVector
     T _data[S]; ///< Internal array storing vector components
 
     /*! @brief Default constructor initializes all elements to zero */
-    MVector<T, S>()
+    constexpr MVector<T, S>()
     {
         for (int i = 0; i < S; i++)
             _data[i] = 0;
     }
 
     /*! @brief Default constructor */
-    MVector<T, S>(const MVector<T, S> &other)
+    constexpr MVector<T, S>(const MVector<T, S> &other)
     {
         for (int i = 0; i < S; i++)
             _data[i] = other._data[i];
@@ -37,7 +37,7 @@ struct MVector
      * @brief Constructor from raw array
      * @param data Pointer to array of exactly S elements
      */
-    MVector<T, S>(const T *data)
+    constexpr MVector<T, S>(const T *data)
     {
         for (int i = 0; i < S; i++)
             _data[i] = data[i];
@@ -49,10 +49,10 @@ struct MVector
      * @param args Exactly S values to initialize vector elements
      */
     template<typename... ARGS,
-      typename Check = std::enable_if_t<sizeof...(ARGS) == S && std::conjunction_v<std::is_same<T, ARGS>...>>>
-    MVector<T, S>(ARGS... args)
+      typename Check = std::enable_if_t<sizeof...(ARGS) == S && std::conjunction_v<std::is_convertible<T, ARGS>...>>>
+    constexpr MVector<T, S>(ARGS... args)
     {
-        T data[S]{args...};
+        T data[S]{(T)args...};
         for (int i = 0; i < S; i++)
             _data[i] = data[i];
     }
@@ -62,7 +62,7 @@ struct MVector
      * @param data Initializer list with up to S elements
      * @note If list contains fewer than S elements, remaining elements are zero-initialized
      */
-    MVector<T, S>(std::initializer_list<T> data)
+    constexpr MVector<T, S>(std::initializer_list<T> data)
     {
         int i = 0;
         for (const auto &e : data)
@@ -273,8 +273,9 @@ struct std::hash<MVector<T, S>>
     {
         size_t hash = 0x811c9dc5;
         size_t h1 = 0x959954B9;
-        unsigned char *name = (unsigned char *)val._data;
-        while (*name)
+        unsigned char* name = (unsigned char*)val._data;
+        unsigned char* end = ((unsigned char*)val._data) + sizeof(val);
+        while (name != end)
         {
             h1 = *name + (h1 << 5) + (h1 << 7) + (h1 << 17) - h1;
             hash ^= (unsigned char)*name++;

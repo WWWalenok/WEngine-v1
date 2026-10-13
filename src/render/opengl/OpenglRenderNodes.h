@@ -269,6 +269,9 @@ public:
     }
 };
 
+#include "../../World/WObject.h"
+#include "../../World/Camera.h"
+
 class WObjectTransformNode : public OpenglRHINode
 {
 protected:
@@ -908,6 +911,30 @@ public:
     }
 };
 
+class OpenglMultipassNode : public OpenglRHINode
+{
+    Ref<OpenglRHITexture> outputTexture;
+    int outputW = 0, outputH = 0;
+public:
+    explicit OpenglMultipassNode(size_t inputCount)
+    {
+        outputTexture = MakeRef<OpenglRHITexture>();
+        SetInputNodesCount(inputCount);
+    }
+
+    bool HasOwnOutput() const override {
+        return false;
+    }
+
+    void Prepair(OpenglContext& context) override 
+    {}
+
+    void Execute(const OpenglContext&) override
+    {
+        MarkProcessed();
+    }
+};
+
 class OpenglWindowOutputNode : public OpenglRHINode
 {
     Ref<OpenglRHIWindowTarget> window;
@@ -1034,6 +1061,633 @@ public:
         glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
         glBindVertexArray(0);
         outputTexture->UnbindTarget();
+        MarkProcessed();
+    }
+};
+
+#include "../../UI/UI.h"
+#include "../../Text/DisplayText.h"
+#include "../../Text/Font.h"
+
+// =====================================================================
+// Пер-инстансный глиф
+// =====================================================================
+struct TextGlyphInstance
+{
+    float x, y, w, h;      // px, origin — левый верх таргета
+    float u0, v0, u1, v1;  // UV в атласе
+    float r, g, b, a;      // цвет глифа
+};
+
+
+// =====================================================================
+// Единый батчер текста и кеш текстур.
+// Один глобальный объект — используется всеми нодами, которые рендерят
+// текст и картинки виджетов.
+// =====================================================================
+class OpenglTextBatchDrawer
+{
+public:
+    static OpenglTextBatchDrawer& Get()
+    {
+        static OpenglTextBatchDrawer inst;
+        return inst;
+    }
+
+    // ------------------------------------------------------------------
+    // Кеши текстур. Возвращают GLuint (0 при ошибке).
+    // Первый вызов создаёт текстуру, последующие — обновляют при dirty.
+    // ------------------------------------------------------------------
+    GLuint EnsureImage(const Ref<Image>& img);
+    GLuint EnsureAtlas(const Ref<FontAtlas>& atlas);
+
+    // Удаляет мёртвые weak-ref'ы. Идемпотентно, вызывается из Prepair.
+    void BeginFrame();
+
+    // ------------------------------------------------------------------
+    // Батч глифов.
+    // ------------------------------------------------------------------
+    // Добавить один глиф с указанием текстуры. Соседние глифы одной
+    // текстуры автоматически сливаются в один DrawRange.
+    void PushGlyph(GLuint tex, const TextGlyphInstance& g);
+
+    // Отрисовать всё накопленное в текущий (уже забиндженный) таргет.
+    // Шейдер TextInstanced + один draw на диапазон.
+    void FlushText(int targetW, int targetH);
+
+    // Сбросить пул (без отрисовки).
+    void Reset();
+
+private:
+    OpenglTextBatchDrawer() { _Init(); }
+
+    // ---- VBO/VAO ----
+    GLuint _vao         = 0;
+    GLuint _quadVbo     = 0;
+    GLuint _instanceVbo = 0;
+    size_t _capacity    = 0;
+
+    struct DrawRange { GLuint tex; size_t start; size_t count; };
+    std::vector<TextGlyphInstance> _pool;
+    std::vector<DrawRange>         _ranges;
+
+    // ---- Кеши ----
+    std::unordered_map<Image*, Ref<OpenglRHITexture>>           _imageTex;
+    std::unordered_map<Image*, WeakRef<Image>>                  _imageRefs;
+
+    std::unordered_map<const FontAtlas*, Ref<OpenglRHITexture>> _atlasTex;
+    std::unordered_map<const FontAtlas*, WeakRef<FontAtlas>>    _atlasRefs;
+
+    void _Init();
+    void _EnsureCapacity(size_t n);
+};
+
+
+// =====================================================================
+// Реализация
+// =====================================================================
+inline GLuint OpenglTextBatchDrawer::EnsureImage(const Ref<Image>& img)
+{
+    if (!img) return 0;
+    Image* key = img.get();
+
+    auto it = _imageTex.find(key);
+    if (it == _imageTex.end())
+    {
+        auto tex = MakeRef<OpenglRHITexture>();
+        uint32_t iw = img->width;
+        uint32_t ih = img->height;
+        PixelFormat fmt = img->format;
+        const uint8_t* dp = img->data;
+        if (iw > 0 && ih > 0 && dp)
+            tex->InitAsRenderTarget((int)iw, (int)ih, fmt, dp);
+        else
+        {
+            static const uint8_t white[4] = { 255,255,255,255 };
+            tex->InitAsRenderTarget(1, 1, PixelFormat::RGBA_8, white);
+        }
+        _imageTex[key] = tex;
+        _imageRefs[key] = img;
+        img->Update();
+        return tex->Tex;
+    }
+
+    if (img->dirty)
+    {
+        auto& tex = it->second;
+        uint32_t iw = img->width, ih = img->height;
+        PixelFormat fmt = img->format;
+        const uint8_t* dp = img->data;
+        if (iw > 0 && ih > 0 && dp)
+            tex->Update((int)iw, (int)ih, fmt, dp);
+        img->Update();
+    }
+    return it->second->Tex;
+}
+
+inline GLuint OpenglTextBatchDrawer::EnsureAtlas(const Ref<FontAtlas>& atlas)
+{
+    if (!atlas || !atlas->Texture) return 0;
+    const FontAtlas* key = atlas.get();
+    auto& img = atlas->Texture;
+
+    auto it = _atlasTex.find(key);
+    if (it == _atlasTex.end())
+    {
+        auto tex = MakeRef<OpenglRHITexture>();
+        tex->InitAsRenderTarget((int)img->width, (int)img->height,
+                                PixelFormat::RED_8, img->data);
+        _atlasTex[key] = tex;
+        _atlasRefs[key] = atlas;
+        img->Update();
+        return tex->Tex;
+    }
+
+    if (img->dirty)
+    {
+        auto& tex = it->second;
+        tex->Update((int)img->width, (int)img->height,
+                    PixelFormat::RED_8, img->data);
+        img->Update();
+    }
+    return it->second->Tex;
+}
+
+inline void OpenglTextBatchDrawer::BeginFrame()
+{
+    for (auto it = _imageTex.begin(); it != _imageTex.end(); )
+    {
+        auto r = _imageRefs.find(it->first);
+        if (r == _imageRefs.end() || !r->second)
+        {
+            if (r != _imageRefs.end()) _imageRefs.erase(r);
+            it = _imageTex.erase(it);
+        }
+        else ++it;
+    }
+    for (auto it = _atlasTex.begin(); it != _atlasTex.end(); )
+    {
+        auto r = _atlasRefs.find(it->first);
+        if (r == _atlasRefs.end() || !r->second)
+        {
+            if (r != _atlasRefs.end()) _atlasRefs.erase(r);
+            it = _atlasTex.erase(it);
+        }
+        else ++it;
+    }
+}
+
+inline void OpenglTextBatchDrawer::PushGlyph(GLuint tex, const TextGlyphInstance& g)
+{
+    if (_ranges.empty() || _ranges.back().tex != tex)
+        _ranges.push_back({ tex, _pool.size(), 0 });
+    _ranges.back().count++;
+    _pool.push_back(g);
+}
+
+inline void OpenglTextBatchDrawer::FlushText(int targetW, int targetH)
+{
+    if (_ranges.empty()) return;
+
+    _EnsureCapacity(_pool.size());
+    glBindBuffer(GL_ARRAY_BUFFER, _instanceVbo);
+    glBufferSubData(GL_ARRAY_BUFFER, 0,
+                    _pool.size() * sizeof(TextGlyphInstance),
+                    _pool.data());
+
+    auto shader = ShaderLib::GetShader("TextInstanced");
+    shader->Use();
+    shader->setUniform("u_atlas", 0);
+    shader->setUniform("u_targetSize",
+                       MVector2f{ (float)targetW, (float)targetH });
+
+    glActiveTexture(GL_TEXTURE0);
+    glBindVertexArray(_vao);
+
+    GLuint bound = 0;
+    for (auto& r : _ranges)
+    {
+        if (r.tex != bound) { glBindTexture(GL_TEXTURE_2D, r.tex); bound = r.tex; }
+        glDrawArraysInstancedBaseInstance(GL_TRIANGLE_STRIP, 0, 4,
+                                          (GLsizei)r.count, (GLuint)r.start);
+    }
+    glBindVertexArray(0);
+
+    Reset();
+}
+
+inline void OpenglTextBatchDrawer::Reset()
+{
+    _pool.clear();
+    _ranges.clear();
+}
+
+inline void OpenglTextBatchDrawer::_EnsureCapacity(size_t n)
+{
+    if (n <= _capacity) return;
+    size_t newCap = std::max(_capacity * 2, n);
+    newCap = std::max<size_t>(newCap, 256);
+
+    glBindBuffer(GL_ARRAY_BUFFER, _instanceVbo);
+    glBufferData(GL_ARRAY_BUFFER,
+                 newCap * sizeof(TextGlyphInstance),
+                 nullptr, GL_DYNAMIC_DRAW);
+    _capacity = newCap;
+}
+
+inline void OpenglTextBatchDrawer::_Init()
+{
+    static const float quad[8] = { 0,0,  1,0,  0,1,  1,1 };
+
+    glGenVertexArrays(1, &_vao);
+    glBindVertexArray(_vao);
+
+    glGenBuffers(1, &_quadVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, _quadVbo);
+    glBufferData(GL_ARRAY_BUFFER, sizeof(quad), quad, GL_STATIC_DRAW);
+    glEnableVertexAttribArray(0);
+    glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void*)0);
+
+    glGenBuffers(1, &_instanceVbo);
+    glBindBuffer(GL_ARRAY_BUFFER, _instanceVbo);
+    glBufferData(GL_ARRAY_BUFFER, 256 * sizeof(TextGlyphInstance),
+                 nullptr, GL_DYNAMIC_DRAW);
+    _capacity = 256;
+
+    const GLsizei S = sizeof(TextGlyphInstance);
+
+    glEnableVertexAttribArray(1);
+    glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, S,
+                          (void*)offsetof(TextGlyphInstance, x));
+    glVertexAttribDivisor(1, 1);
+
+    glEnableVertexAttribArray(2);
+    glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, S,
+                          (void*)offsetof(TextGlyphInstance, w));
+    glVertexAttribDivisor(2, 1);
+
+    glEnableVertexAttribArray(3);
+    glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, S,
+                          (void*)offsetof(TextGlyphInstance, u0));
+    glVertexAttribDivisor(3, 1);
+
+    glEnableVertexAttribArray(4);
+    glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, S,
+                          (void*)offsetof(TextGlyphInstance, r));
+    glVertexAttribDivisor(4, 1);
+
+    glBindVertexArray(0);
+}
+
+class OpenglWidgetRenderNode : public OpenglRHINode
+{
+    WeakRef<Widget> widget;
+    Ref<OpenglRHITexture> outputTexture;
+    int outputW = 0, outputH = 0;
+
+    struct DrawOp
+    {
+        enum Type : uint8_t { Image, Text } type;
+        GLuint tex = 0;
+        int ix = 0, iy = 0, iw = 0, ih = 0;
+        size_t glyphStart = 0;
+        size_t glyphCount = 0;
+    };
+    std::vector<DrawOp> ops;
+    std::vector<TextGlyphInstance> glyphPool;
+
+    size_t lastHash = 0;
+
+public:
+    explicit OpenglWidgetRenderNode(Ref<Widget> w) : widget(std::move(w)) {}
+
+    bool HasOwnOutput() const override { return false; }
+
+    void Prepair(OpenglContext& context) override
+    {
+        auto& drawer = OpenglTextBatchDrawer::Get();
+        drawer.BeginFrame();
+
+        const int W = context.width;
+        const int H = context.height;
+        if (W <= 0 || H <= 0) return;
+
+        if (outputW != W || outputH != H)
+        {
+            outputW = W;
+            outputH = H;
+            lastHash = 0;
+        }
+
+        auto w = widget.lock();
+        if (!w) return;
+
+        auto listItems = w->Render((double)W, (double)H);
+        std::vector<Widget::ToRender> items(listItems.begin(), listItems.end());
+
+        if (items.empty())
+        {
+            if (!ops.empty()) { ops.clear(); glyphPool.clear(); lastHash = 0; }
+            return;
+        }
+
+        // ---------- Хэш + детект dirty + обновление текстур ----------
+        size_t hash = 0;
+        auto mix = [&hash](size_t v) {
+            hash ^= v + 0x9e3779b97f4a7c15ULL + (hash << 6) + (hash >> 2);
+        };
+        bool anyDirty = false;
+
+        for (auto& it : items)
+        {
+            mix(reinterpret_cast<size_t>(it.data.get()));
+            mix(reinterpret_cast<size_t>(it.text.get()));
+            mix((size_t)(uint32_t)it.Z);
+            uint64_t x, y, ww, hh;
+            std::memcpy(&x,  &it.X, 8);
+            std::memcpy(&y,  &it.Y, 8);
+            std::memcpy(&ww, &it.W, 8);
+            std::memcpy(&hh, &it.H, 8);
+            mix((size_t)x); mix((size_t)y); mix((size_t)ww); mix((size_t)hh);
+
+            if (it.data)
+            {
+                if (it.data->dirty) anyDirty = true;
+                drawer.EnsureImage(it.data);
+            }
+
+            if (it.text)
+            {
+                for (auto& p : it.text->GetLayout())
+                {
+                    if (!p.Sym || !p.Sym->Atlas) continue;
+                    if (p.Sym->Atlas->Texture && p.Sym->Atlas->Texture->dirty)
+                        anyDirty = true;
+                    drawer.EnsureAtlas(p.Sym->Atlas);
+                }
+            }
+        }
+
+        if (hash == lastHash && !anyDirty)
+            return;
+        lastHash = hash;
+
+        // ---------- Сортировка по Z ----------
+        std::sort(items.begin(), items.end(),
+                  [](const Widget::ToRender& a, const Widget::ToRender& b)
+                  { return a.Z < b.Z; });
+
+        // ---------- Сборка draw-ops ----------
+        ops.clear();
+        glyphPool.clear();
+
+        for (auto& item : items)
+        {
+            // --- Image ---
+            if (item.data)
+            {
+                GLuint tex = drawer.EnsureImage(item.data);
+                if (!tex) continue;
+
+                const int x = (int)std::floor(item.X);
+                const int y = (int)std::floor(item.Y);
+                const int w = (int)std::ceil(item.W);
+                const int h = (int)std::ceil(item.H);
+                if (w <= 0 || h <= 0) continue;
+
+                DrawOp op;
+                op.type = DrawOp::Image;
+                op.tex  = tex;
+                op.ix = x; op.iy = y; op.iw = w; op.ih = h;
+                ops.push_back(op);
+                continue;
+            }
+
+            // --- Text ---
+            if (item.text)
+            {
+                const auto& layout = item.text->GetLayout();
+                for (auto& p : layout)
+                {
+                    if (!p.Font || !p.Sym || !p.Sym->bInAtlas) continue;
+                    if (p.Sym->PixelW == 0 || p.Sym->PixelH == 0) continue;
+                    if (!p.Sym->Atlas) continue;
+
+                    GLuint gtex = drawer.EnsureAtlas(p.Sym->Atlas);
+                    if (!gtex) continue;
+
+                    TextGlyphInstance g;
+                    g.x  = (float)std::floor(item.X + p.X);
+                    g.y  = (float)std::floor(item.Y + p.Y);
+                    g.w  = (float)p.Sym->PixelW;
+                    g.h  = (float)p.Sym->PixelH;
+                    g.u0 = p.Sym->U0; g.v0 = p.Sym->V0;
+                    g.u1 = p.Sym->U1; g.v1 = p.Sym->V1;
+                    g.r = ((p.Color >>  0) & 0xff) / 255.0f;
+                    g.g = ((p.Color >>  8) & 0xff) / 255.0f;
+                    g.b = ((p.Color >> 16) & 0xff) / 255.0f;
+                    g.a = ((p.Color >> 24) & 0xff) / 255.0f;
+
+                    if (!ops.empty()
+                        && ops.back().type == DrawOp::Text
+                        && ops.back().tex  == gtex)
+                    {
+                        ops.back().glyphCount++;
+                    }
+                    else
+                    {
+                        DrawOp op;
+                        op.type       = DrawOp::Text;
+                        op.tex        = gtex;
+                        op.glyphStart = glyphPool.size();
+                        op.glyphCount = 1;
+                        ops.push_back(op);
+                    }
+                    glyphPool.push_back(g);
+                }
+            }
+        }
+    }
+
+    void Execute(const OpenglContext&) override
+    {
+        outputTexture = RefCast<OpenglRHITexture>(cashedOutput);
+        if (!outputTexture || ops.empty())
+        {
+            MarkProcessed();
+            return;
+        }
+
+        outputTexture->BindAsTarget();
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        auto& drawer = OpenglTextBatchDrawer::Get();
+        drawer.Reset();
+
+        const MVector2f targetSize{ (float)outputW, (float)outputH };
+        auto shaderImg = ShaderLib::GetShader("WidgetBlit");
+
+        for (auto& op : ops)
+        {
+            if (op.type == DrawOp::Image)
+            {
+                // Сначала — накопленный текст (порядок по Z сохраняется).
+                drawer.FlushText(outputW, outputH);
+
+                shaderImg->Use();
+                shaderImg->setUniform("screenTexture", 0);
+                shaderImg->setUniform("u_targetSize", targetSize);
+                glActiveTexture(GL_TEXTURE0);
+                glBindTexture(GL_TEXTURE_2D, op.tex);
+                shaderImg->setUniform("u_rect",
+                    MVector4f{ (float)op.ix, (float)op.iy,
+                               (float)op.iw, (float)op.ih });
+                glBindVertexArray(FullscreenQuadHelper::GetVAO());
+                glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+            }
+            else
+            {
+                for (size_t i = 0; i < op.glyphCount; ++i)
+                    drawer.PushGlyph(op.tex, glyphPool[op.glyphStart + i]);
+            }
+        }
+        drawer.FlushText(outputW, outputH);
+
+        glBindVertexArray(0);
+        glDisable(GL_BLEND);
+        outputTexture->UnbindTarget();
+
+        MarkProcessed();
+    }
+};
+
+class OpenglTextRenderNode : public OpenglRHINode
+{
+    WeakRef<DisplayText> text;
+    Ref<OpenglRHITexture> outputTexture;
+    int outputW = 0, outputH = 0;
+
+    // Отсортированные по атласу диапазоны в pool.
+    std::vector<TextGlyphInstance> glyphPool;
+    std::vector<std::pair<GLuint, std::pair<size_t, size_t>>> draws;
+
+    size_t lastHash = 0;
+
+public:
+    explicit OpenglTextRenderNode(Ref<DisplayText> t) : text(std::move(t)) {}
+
+    bool HasOwnOutput() const override { return false; }
+
+    void Prepair(OpenglContext& ctx) override
+    {
+        auto& drawer = OpenglTextBatchDrawer::Get();
+        drawer.BeginFrame();
+
+        const int W = ctx.width, H = ctx.height;
+        if (W <= 0 || H <= 0) return;
+
+        if (outputW != W || outputH != H)
+        {
+            outputW = W;
+            outputH = H;
+            lastHash = 0;
+        }
+
+        auto t = text.lock();
+        if (!t) { glyphPool.clear(); draws.clear(); lastHash = 0; return; }
+
+        const auto& layout = t->GetLayout();
+
+        // ---------- Хэш + dirty + обновление атласов ----------
+        size_t h = 0;
+        auto mix = [&h](size_t v) {
+            h ^= v + 0x9e3779b97f4a7c15ULL + (h << 6) + (h >> 2);
+        };
+        mix(layout.size());
+
+        bool anyDirty = false;
+        for (auto& p : layout)
+        {
+            mix(reinterpret_cast<size_t>(p.Sym.get()));
+            mix(reinterpret_cast<size_t>(p.Font.get()));
+            mix((size_t)p.Color);
+
+            if (p.Sym && p.Sym->Atlas)
+            {
+                if (p.Sym->Atlas->Texture && p.Sym->Atlas->Texture->dirty)
+                    anyDirty = true;
+                drawer.EnsureAtlas(p.Sym->Atlas);
+            }
+        }
+
+        if (h == lastHash && !anyDirty)
+            return;
+        lastHash = h;
+
+        // ---------- Сборка ----------
+        glyphPool.clear();
+        draws.clear();
+
+        for (auto& p : layout)
+        {
+            if (!p.Font || !p.Sym || !p.Sym->bInAtlas) continue;
+            if (p.Sym->PixelW == 0 || p.Sym->PixelH == 0) continue;
+            if (!p.Sym->Atlas) continue;
+
+            GLuint gtex = drawer.EnsureAtlas(p.Sym->Atlas);
+            if (!gtex) continue;
+
+            TextGlyphInstance g;
+            g.x  = (float)std::floor(p.X);
+            g.y  = (float)std::floor(p.Y);
+            g.w  = (float)p.Sym->PixelW;
+            g.h  = (float)p.Sym->PixelH;
+            g.u0 = p.Sym->U0; g.v0 = p.Sym->V0;
+            g.u1 = p.Sym->U1; g.v1 = p.Sym->V1;
+            g.r = ((p.Color >>  0) & 0xff) / 255.0f;
+            g.g = ((p.Color >>  8) & 0xff) / 255.0f;
+            g.b = ((p.Color >> 16) & 0xff) / 255.0f;
+            g.a = ((p.Color >> 24) & 0xff) / 255.0f;
+
+            if (!draws.empty() && draws.back().first == gtex)
+                draws.back().second.second++;
+            else
+                draws.push_back({ gtex, { glyphPool.size(), 1 } });
+            glyphPool.push_back(g);
+        }
+    }
+
+    void Execute(const OpenglContext&) override
+    {
+        outputTexture = RefCast<OpenglRHITexture>(cashedOutput);
+        if (!outputTexture || draws.empty())
+        {
+            MarkProcessed();
+            return;
+        }
+
+        outputTexture->BindAsTarget();
+
+        glDisable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        auto& drawer = OpenglTextBatchDrawer::Get();
+        drawer.Reset();
+
+        for (auto& d : draws)
+            for (size_t i = 0; i < d.second.second; ++i)
+                drawer.PushGlyph(d.first, glyphPool[d.second.first + i]);
+
+        drawer.FlushText(outputW, outputH);
+
+        glBindVertexArray(0);
+        glDisable(GL_BLEND);
+        outputTexture->UnbindTarget();
+
         MarkProcessed();
     }
 };
